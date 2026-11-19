@@ -25,6 +25,10 @@ evals in Chromium on Linux, and builds the wheel, installs it and checks this re
   was asked to add a function and told not to run tests unless something told it to. The hook
   blocked the stop once with `tests-stale`, the agent ran `agent-sense done --run`, and the turn
   ended with the check passing (5 turns). One run, one model, one prompt.
+- **Stop hook, repeated** (`evals/done_hook_eval.py`, 36 headless sessions, $4.15). Sessions that
+  edited code and ended with a passing test run after the last edit: 15 of 15 with the hook, 5 of
+  15 without. The hook blocked each of the 15 exactly once and never blocked a documentation-only
+  session. Every session, in both arms, left passing tests.
 - **History replay.** Each of 28 non-root commits of two real repositories was treated as the
   change being handed over. `fail` findings: 0. Warnings: 2 `expectation-changed`, both real
   rewrites of an expected value next to a code change.
@@ -53,8 +57,12 @@ Run on eight local projects (about 2,000 imports, four of them JavaScript with 1
 - deps: 2 findings, both true (a package imported in two files and declared nowhere).
 - boundary: no import or `sys.path` reach; 4 path warnings, all intended subprocess calls into a
   shared service, cleared by one `allow` line each.
-- context: 0 findings over 40 checked paths. No real stale reference existed in these files, so
-  recall in the field is unproven; it rests on the planted cases.
+- context: 0 findings over 40 checked paths. No real stale reference existed in these files.
+- context, recall on real history (`evals/context_history.py`): 18 references that went stale in
+  eight public repositories since 2025-03-01. 0.1.0 reports 12 (67%). With the new rooted level 17
+  of 18 are reported, 12 as warnings and 5 as info; the last one is a path git ignores.
+- context, noise at the head of ten public repositories: 80 warnings and 15 info findings over
+  5,724 checked paths, 85 of the 95 in one monorepo. Not all read.
 
 Lock-file checks were exercised on small synthetic lock files only.
 
@@ -69,6 +77,20 @@ Ten `external-undisclosed` findings were compared by hand with the policy text t
 1 false (image thumbnails from a search engine's host counted as its advertising tag). The host
 patterns behind the false and the mislabelled finding were narrowed, each with a regression test.
 The findings of the final run were not all re-read.
+
+**Japanese commercial services, 2026-11-20** (`evals/launch_jp_sites.txt`, 40 well-known services).
+These operators have policies and statements pages, so a `fail` here is almost always the tool's
+error. The first run gave 14 fail findings on 11 sites: three were a maintenance page (503) and
+two bot checks (403) judged as sites without a policy, one policy sat behind a page listing all
+legal documents, seven statements pages were demanded on the strength of a price in the text
+(corporate sites, services sold to businesses), one because the payment company's own site loads
+its own host. After the fixes: 3 `page-error` (the 503 and the two 403, judged no
+further) and 3 fail findings on 3 sites. One is a miss of the tool (a policy link it does not
+recognise), one is a statements page asked for because Stripe is loaded on an app-download page,
+and one is a `pk_test_` key that is really in a production script, which may or may not be
+intended. `tokushoho-missing` is a warning on 7 more sites and `tokushoho-incomplete` on 7; none
+of those 14 were checked against the pages by hand. `external-undisclosed` was reported on 31 of
+the 37 loaded sites and was not reviewed in this run.
 
 The vendor table has 110 services and 223 host patterns. "Verified" in that file means the host
 resolved in DNS on the day, not that it was checked against the vendor's documentation.

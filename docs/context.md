@@ -47,6 +47,15 @@ Instruction files are full of things that look like paths and are not. These are
   project with no `food_vision/` is an illustration, a repository slug such as `owner/repo`, or
   wording such as `fail/warn`. This one rule replaces any attempt to recognise "example" code
   blocks. `--strict` turns it off and reports those too. Link targets are always reported.
+- A directory must exist with the same spelling. On macOS and Windows the file system finds
+  `PostHog/` when the directory is `posthog/`; the check compares the real names, so a repository
+  slug is not anchored by a directory that differs only in case.
+
+**Rooted paths (severity info).** A path written with two or more directories whose first
+directory exists, while the directory the file sat in does not (`app/cli/utils.py` with `app/`
+present and `app/cli/` gone), is what a removed or moved package leaves behind. It is reported as
+`info` with `"rooted": true`, not as a warning: in monorepos the same shape also comes from paths
+written relative to another package.
 
 The cost of the anchoring rule: when a whole top-level directory is deleted, references into it
 are not reported without `--strict`, and a bare file name that no longer exists anywhere is not
@@ -74,8 +83,22 @@ finding. Field run on the instruction files found on the development machine (4 
 projects, one global `CLAUDE.md`, one memory directory with 6 memories; 40 paths checked): 0
 findings. `--strict` on the same files reports 9, and all 9 were read and are not stale paths
 (repository slugs, illustrative paths, `CI/CD`, generic layout names), which is the evidence for
-the anchoring rule. No real stale reference existed in these files, so the field run shows the
-absence of false alarms and says nothing about recall; recall rests on the planted cases.
+the anchoring rule. No real stale reference existed in these files, so that run shows the absence
+of false alarms and says nothing about recall.
+
+Recall on real history (`evals/context_history.py`, 2026-11-20): the first-parent history since
+2025-03-01 of eight public repositories that keep `AGENTS.md` or `CLAUDE.md` files was replayed.
+A stale reference is a path that an instruction file names at a commit where the file is gone,
+found by a plain scan of the text and not by the check's own parser. 18 such references exist in
+five of the repositories. Version 0.1.0 reports 12 of them (67%); the 5 it misses all sit in a
+directory that was removed with them, and one path is ignored by git. With the rooted level the
+check reports 17 of 18: 12 as warnings, 5 as info. None of the 18 stood in plain prose.
+
+Noise at the head of ten public repositories (5,724 paths checked in 270 instruction files):
+80 warnings and 15 info findings, 70 and 15 of them in one monorepo whose instruction files name
+paths relative to sub-packages. Comparing names exactly removed 23 warnings that 0.1.0 gave on
+macOS, where a slug such as `PostHog/posthog` was anchored by the directory `posthog/`. The 80
+warnings were not all read, so their precision is not known.
 
 ## Limits
 

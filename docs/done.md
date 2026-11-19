@@ -71,6 +71,22 @@ of two real repositories as if each were being handed over gave 0 `fail` finding
 `expectation-changed` warnings (both real rewrites of an expected value next to a code change).
 That sample is small and comes from one person's repositories.
 
+**Stop hook with a real agent** (`evals/done_hook_eval.py`, paid, 2026-11-20). Six tasks, each run
+three times with the hook and three times without, in a fresh repository, as headless Claude Code
+sessions that load project settings only. "Verified" means the session's own tool calls show a
+passing test run after its last code edit.
+
+| | sessions that edited code | verified | hook blocks |
+|---|---|---|---|
+| with the hook | 15 | 15 | 15 |
+| without | 15 | 5 | 0 |
+
+Without the hook the agent ran the tests after its last edit only when the task itself asked for
+a test (3 of 3) and in 2 of the other 12 sessions. With the hook every session was stopped once
+and then ran them. The three documentation-only sessions per arm were never blocked. All 36
+sessions left passing tests and a working change, so in this sample the hook changed whether the
+claim was checked, not whether it was true. One model, one small repository, tasks of a few lines.
+
 ## Limits
 
 - The test command is trusted to mean something. A command that always exits 0 passes.

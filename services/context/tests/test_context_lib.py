@@ -166,3 +166,27 @@ def test_findings_satisfy_the_contract(tmp_path):
 def test_path_written_with_the_project_folder_name_in_front(tmp_path):
     root = project(tmp_path / "myproj", {**BASE, "CLAUDE.md": "See `myproj/scripts/test.sh` and `myproj/scripts/gone.sh`.\n"})
     assert found(check(root)) == [("missing-path", 1, "myproj/scripts/gone.sh")]
+
+
+def test_a_path_whose_directory_is_gone_too_is_reported_as_info_when_its_first_directory_exists(tmp_path):
+    root = project(tmp_path, {**BASE, "app/api/routes.py": ""})
+    (root / "CLAUDE.md").write_text("Handlers live in `app/cli/utils.py`. Example: `food_vision/models/classifier.py`. See `app/gone.py`.\n")
+    result = context_lib.run(argparse.Namespace(root=root, config={}))
+    assert [(f["severity"], f["detail"]["path"]) for f in result["findings"]] == [
+        ("info", "app/cli/utils.py"),   # app/ exists, app/cli/ does not: a removed package
+        ("warn", "app/gone.py")]        # the illustration under a directory that never existed stays silent
+    assert result["findings"][0]["detail"]["rooted"] is True
+
+
+def test_a_directory_must_exist_with_the_same_spelling(tmp_path):
+    root = project(tmp_path, {**BASE})
+    (root / "Vendor").mkdir()            # untracked, so only the disk can answer
+    (root / "CLAUDE.md").write_text("The mirror is `vendor/app`, the fork `Vendor/app`.\n")
+    assert found(check(root)) == [("missing-path", 1, "Vendor/app")]
+
+
+def test_rooted_counts_the_directories_of_the_path_as_written_not_of_the_instruction_file(tmp_path):
+    root = project(tmp_path, {**BASE, "packages/app/src/index.ts": ""})
+    (root / "packages/app/AGENTS.md").write_text("Branch `origin/dev`, model `openai/gpt-5`, files `.spec.ts`, but `src/old/thing.ts`.\n")
+    result = context_lib.run(argparse.Namespace(root=root, config={}))
+    assert [(f["severity"], f["detail"]["path"]) for f in result["findings"]] == [("info", "src/old/thing.ts")]

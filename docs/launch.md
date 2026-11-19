@@ -22,8 +22,12 @@ mean the site is compliant.
 3. More pages of the same site, navigation links first, then footer links, until `--pages` pages
    are loaded (default 8).
 
-Each page is loaded once, scrolled to the bottom once, and read after the network goes quiet
-(8 s at most). Nothing is clicked, no form is submitted, no consent banner is answered.
+When the top page has no policy link but links to a page that lists the legal documents
+("規約・ポリシー一覧", or a path ending in `/policy`, `/legal`, `/terms`), up to two such pages are
+loaded and their links count.
+
+Each page is loaded once, scrolled to the bottom up to five times while it keeps growing, and read
+after the network goes quiet (8 s at most). Nothing is clicked, no form is submitted, no consent banner is answered.
 
 ## Rules
 
@@ -37,11 +41,11 @@ Each page is loaded once, scrolled to the bottom once, and read after the networ
 | `terms-missing` | warn | no link to terms of use |
 | `contact-missing` | warn | no contact link, form link or mail address |
 | `operator-missing` | info | no link to a page about the operator |
-| `tokushoho-missing` | fail | the site looks paid and no link to a statements page (特定商取引法に基づく表記) was found |
+| `tokushoho-missing` | fail, or warn when only prices in the text suggest selling | the site looks paid and no link to a statements page (特定商取引法に基づく表記) was found |
 | `tokushoho-incomplete` | warn | the site looks paid and the statements page has no wording for some commonly listed items |
 | `test-key` | fail | a test-mode key (`pk_test_`, `sk_test_`, `rk_test_`, Square sandbox id) is in the HTML or a same-site script, or a page calls a payment sandbox host |
 | `localhost-reference` | fail | a published page links to or requests `localhost`, `127.0.0.1` or a private address |
-| `page-error` | fail | the top page could not be loaded |
+| `page-error` | fail | the top page could not be loaded, or answered with HTTP 400 or above (maintenance, bot check); nothing else is judged then |
 
 ### How each is decided
 
@@ -64,6 +68,10 @@ constants at the top of `launch_lib.py`.
 (Stripe, PayPal, PAY.JP, Square, KOMOJU, Shopify, BASE, STORES, GMO Payment Gateway), or shows a
 price (`¥1,980`, `1,980円`) within 80 characters of purchase wording (購入, 申し込, 月額, 税込 and
 similar). The evidence is in the finding. Free sites are never asked for a statements page.
+A loaded payment service (or `--paid yes`) makes a missing statements page a `fail`. A price in
+the text alone makes it a `warn`: corporate sites, services sold to businesses and marketplaces
+show prices without selling to consumers on that site. A payment company's own site loading its
+own hosts is not evidence.
 
 **Statements page items.** Seller name, address, phone number, person in charge, price, payment
 method, payment time, delivery time, returns and cancellation. Each item is a keyword list. The
@@ -83,7 +91,10 @@ only when its text mentions 特定商取引 or 特商法.
   mentioned in an unrelated sentence counts as named. A service described without its name
   ("アクセス解析ツール") counts as not named.
 - **Links without the listed wording**, for example a policy linked only as "Legal" or reached
-  through a menu that renders on click.
+  through a menu that renders on click. In the run on 40 Japanese services one site's policy link
+  was not found for this reason.
+- **Sites that refuse a headless browser.** Two of the 40 answered 403 and are reported as
+  `page-error`, which says nothing about the site.
 - **Whether a statements page is required.** Prices in a news article make a site look paid; a
   service that takes payment only inside an app does not. Use `--paid yes` or `--paid no`.
 - **Vendors not in the table.** They appear as `external-unknown` with their hosts, without a name.
@@ -107,3 +118,4 @@ ignore = ["Google Fonts", "example-cdn.net"]   # vendor names or unknown sites t
 - Known-answer eval: `evals/launch_eval.py`, 10 fixture sites in a real browser with vendor hosts
   answered locally. Threshold 10 of 10.
 - Field run: `evals/launch_field.py` on real sites; see the numbers in the repository results.
+  `evals/launch_jp_sites.txt` lists the 40 Japanese commercial services of the 2026-11-20 run.

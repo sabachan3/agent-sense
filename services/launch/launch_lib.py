@@ -125,7 +125,15 @@ EXTRACT = r"""
   return {links, forms, text, title: document.title.slice(0, 200)};
 }
 """
-SCROLL = "() => { window.scrollTo(0, document.body ? document.body.scrollHeight : 0); }"
+# To the bottom, and again while the page keeps growing: footers are often rendered only when reached.
+SCROLL = """async () => {
+  const height = () => document.body ? document.body.scrollHeight : 0;
+  for (let step = 0, last = -1; step < 5 && height() !== last; step++) {
+    last = height();
+    window.scrollTo(0, last);
+    await new Promise(resolve => setTimeout(resolve, 350));
+  }
+}"""
 
 
 # ---------------------------------------------------------------- hosts and vendors
@@ -255,6 +263,36 @@ def find_role(links: list[dict], role: str, site: str | None = None) -> list[dic
     return unique
 
 
+# A page that only lists the legal documents ("規約・ポリシー一覧"): the footer links to it instead of to each document.
+HUB_WORDS = ("ポリシー", "規約", "法的", "legal", "policies", "policy")
+HUB_PATH = r"/(?:polic(?:y|ies)|legal|terms|rules?|kiyaku)(?:/|/index\.html?)?$"
+
+
+def find_hubs(links: list[dict], site: str) -> list[dict]:
+    """Same-site links to a page that may list the policy, the terms and the statements page."""
+    hits = []
+    for link in links:
+        href = link.get("href") or ""
+        if not href.startswith(("http://", "https://")) or registrable(host_of(href)) != site:
+            continue
+        text, spaced = squash(link.get("text", "")), normalise(link.get("text", ""))
+        labelled = len(text) <= MAX_LINK_TEXT and any(
+            (re.search(rf"(?<![a-z]){word}(?![a-z])", spaced) if word.isascii() else word in text) for word in HUB_WORDS)
+        if labelled or re.search(HUB_PATH, urlsplit(href.lower()).path):
+            hits.append(link)
+    # a link that says it lists policies or terms before one that only has a path such as /legal/
+    def named(link: dict) -> bool:
+        return any(word in squash(link.get("text", "")) for word in ("ポリシー", "規約", "policies"))
+    hits.sort(key=lambda link: (0 if named(link) else 1, 0 if link.get("area") == "footer" else 1))
+    seen, unique = set(), []
+    for link in hits:
+        key = urldefrag(link["href"])[0].rstrip("/")
+        if key not in seen:
+            seen.add(key)
+            unique.append(link)
+    return unique
+
+
 def _safe(link: dict) -> bool:
     href = link.get("href") or ""
     return href.startswith(("http://", "https://", "mailto:"))
@@ -292,7 +330,8 @@ def paid_evidence(pages: list[dict], vendors: list[dict]) -> list[str]:
     for page in pages:
         for request in page.get("requests", []):
             vendor = match_vendor(request["url"], vendors)
-            if vendor and vendor.get("paid"):
+            # the payment company's own site loads its own hosts; that is not a shop using the service
+            if vendor and vendor.get("paid") and match_vendor(page["url"], vendors) is not vendor:
                 reason = f"{vendor['name']} is loaded on {page['url']}"
                 if reason not in reasons:
                     reasons.append(reason)
@@ -345,6 +384,12 @@ def analyse(record: dict, vendors: list[dict], paid: str = "auto", ignore: tuple
         return {"findings": [_finding("page-error", f"could not load {top['url']}: {top['error']}",
                                       "check the URL and that the server is running")],
                 "stats": {"pages": 0}}
+    status = top.get("status")
+    if isinstance(status, int) and status >= 400:
+        # a maintenance, error or bot-check page has no footer: its missing links say nothing about the site
+        return {"findings": [_finding("page-error", f"{top['url']} answered HTTP {status}; nothing was judged",
+                                      "run again when the site answers normally, or pass a page that loads")],
+                "stats": {"pages": 0, "status": status}}
     site_host = host_of(top.get("final_url") or top["url"])
     site = registrable(site_host)
     pages = [page for page in record["pages"] if not page.get("error")]
@@ -463,11 +508,15 @@ def analyse(record: dict, vendors: list[dict], paid: str = "auto", ignore: tuple
                     "add the missing items, or ignore the ones that do not apply to what is sold",
                     page=tokushoho["url"], missing=gaps, paid_evidence=reasons))
         elif not roles["tokushoho"]:
+            # A payment service that is loaded, or --paid yes, is evidence of selling on this site. A price in
+            # the text is not: corporate sites, sales to businesses and marketplaces show prices too.
+            firm = [reason for reason in reasons if not reason.startswith("price ")]
             findings.append(_finding(
                 "tokushoho-missing",
-                f"the site looks paid ({reasons[0]}) and no link to 特定商取引法に基づく表記 was found ({looked})",
+                f"the site looks paid ({(firm or reasons)[0]}) and no link to 特定商取引法に基づく表記 was found ({looked})"
+                + ("" if firm else "; only prices in the text suggest it, so check whether consumers can buy here"),
                 "publish the statements page and link it from the footer; pass --paid no if nothing is sold here",
-                paid_evidence=reasons))
+                severity=None if firm else "warn", paid_evidence=reasons))
 
     # --- leftovers from development
     keys: dict[tuple[str, str], str] = {}
@@ -583,10 +632,16 @@ async def crawl(url: str, pages: int = 8, policy: str | None = None, channel: st
             def http(links: list[dict]) -> list[str]:
                 return [link["href"] for link in links if link["href"].startswith(("http://", "https://"))]
 
-            policies = [policy] if policy else http(find_role(top["links"], "policy"))[:1]
+            hub_links: list[dict] = []
+            if not policy and not find_role(top["links"], "policy"):
+                for address in http(find_hubs(top["links"], site))[:2]:
+                    hub_links += (await visit(address)).get("links", [])
+                    if find_role(hub_links, "policy"):
+                        break
+            policies = [policy] if policy else http(find_role(top["links"] + hub_links, "policy"))[:1]
             for address in policies:
                 remember("policy", await visit(address))
-            pool = list(top["links"])
+            pool = list(top["links"]) + hub_links
             for address in policies:
                 pool += visited[urldefrag(address)[0].rstrip("/")].get("links", [])
             policy_keys = {urldefrag(address)[0].rstrip("/") for address in policies}

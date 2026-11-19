@@ -321,3 +321,47 @@ def test_every_emitted_rule_is_declared_and_summary_states_the_limit():
     lib.add_arguments(parser)
     args = parser.parse_args(["https://x.jp/", "--pages", "3", "--paid", "no"])
     assert (args.url, args.pages, args.paid) == ("https://x.jp/", 3, "no")
+
+
+# ---- found by the field run on Japanese commercial sites (2026-11-20)
+
+def test_an_error_status_on_the_top_page_is_a_page_error_and_nothing_else():
+    record = {"url": "https://shop.example.jp/", "documents": {},
+              "pages": [{**page(text="緊急メンテナンスのお知らせ"), "status": 503}]}
+    result = check(record)
+    assert rules(result) == ["page-error"] and "503" in result["findings"][0]["message"]
+    assert rules(check({**record, "pages": [{**page(links=FOOTER), "status": 200}]}, paid="no")) != ["page-error"]
+
+
+def test_a_page_that_lists_the_legal_documents_is_a_hub():
+    hub = link("https://shop.example.jp/policy", "規約・ポリシー一覧")
+    by_path = link("https://shop.example.jp/legal/", "こちら", area="body")
+    elsewhere = link("https://other.example.com/policy", "ポリシー")
+    news = link("https://shop.example.jp/news/1", "新機能のお知らせ")
+    guide = link("https://shop.example.jp/about/legal/", "電子契約法律ガイド")
+    again = link("https://shop.example.jp/policy/", "規約・ポリシー一覧", area="nav")
+    # a link named as a list of policies first, then the ones known by path only; other sites never; no duplicates
+    assert lib.find_hubs([news, guide, by_path, elsewhere, hub, again], "example.jp") == [hub, guide, by_path]
+
+
+def test_documents_linked_from_a_hub_page_count_as_linked():
+    top = page(links=[link("https://shop.example.jp/policy", "規約・ポリシー一覧"), link("https://shop.example.jp/contact", "お問い合わせ"),
+                      link("https://shop.example.jp/company", "運営会社")])
+    hub = page(url="https://shop.example.jp/policy", links=FOOTER)
+    record = {"url": "https://shop.example.jp/", "pages": [top, hub],
+              "documents": {"policy": {"url": "https://shop.example.jp/privacy", "text": POLICY}}}
+    assert rules(check(record, paid="no")) == []
+
+
+def test_a_price_in_the_text_alone_makes_the_missing_statements_page_a_warning():
+    by_price = check(site(text="スタンダードプラン 月額 8,800円(税込)"))
+    assert [(f["rule"], f["severity"]) for f in by_price["findings"]] == [("tokushoho-missing", "warn")]
+    assert "only prices" in by_price["findings"][0]["message"]
+    by_service = check(site(requests=["https://js.stripe.com/v3/"], policy=POLICY + " Stripe"))
+    assert ("tokushoho-missing", "fail") in [(f["rule"], f["severity"]) for f in by_service["findings"]]
+
+
+def test_a_payment_service_on_its_own_site_is_not_evidence_of_selling():
+    own = page(url="https://stores.jp/", requests=["https://assets.stores.jp/app.js"])
+    assert lib.paid_evidence([own], VENDORS) == []
+    assert lib.paid_evidence([page(requests=["https://assets.stores.jp/app.js"])], VENDORS) != []

@@ -206,6 +206,7 @@ class Project:
     def __init__(self, root: Path, files: list[str]):
         self.root = root
         self.files = set(files)
+        self._listings: dict[Path, set[str]] = {}
         self.dirs = {""}
         for name in files:
             parts = name.split("/")[:-1]
@@ -236,7 +237,34 @@ class Project:
 
     def exists(self, relative: str) -> bool:
         relative = relative.strip("/")
-        return relative in self.files or relative in self.dirs or (self.root / relative).exists()
+        return relative in self.files or relative in self.dirs or self._on_disk(relative)
+
+    def _on_disk(self, relative: str) -> bool:
+        """Whether an untracked path exists with exactly this spelling.
+
+        macOS and Windows find `PostHog/` when the directory is `posthog/`, which would anchor a
+        repository slug such as `PostHog/posthog` to a real directory. Each part is compared with
+        the names the directory really holds.
+        """
+        if not (self.root / relative).exists():
+            return False
+        current = self.root
+        for part in relative.split("/"):
+            if part in (".", ""):
+                continue
+            if part == "..":
+                current = current.parent
+                continue
+            names = self._listings.get(current)
+            if names is None:
+                try:
+                    names = self._listings[current] = set(os.listdir(current))
+                except OSError:
+                    return True   # cannot list it: trust the first answer
+            if part not in names:
+                return False
+            current = current / part
+        return True
 
 
 def resolve(token: str, source_dir: str) -> list[str]:
@@ -290,10 +318,16 @@ def check_file(project: Project, name: str, text: str, strict: bool, base: Path 
             # anchored: the directory the path sits in exists, so it reads as a real project path
             inner = "/" in candidate.rstrip("/").removeprefix("./")
             anchored = inner and any("/" in place and project.exists(place.rsplit("/", 1)[0]) for place in places)
-            if not anchored and not (strict or kind == "link"):
+            # rooted: two or more directories deep and the first one exists. The directory the file sat in is
+            # gone with it, which is what a deleted or moved package looks like. Reported as info.
+            written = candidate.rstrip("/").removeprefix("./")
+            first = written.split("/", 1)[0]
+            rooted = (not anchored and written.count("/") >= 2 and first not in ("..", ".")
+                      and any((f"{base}/{first}" if base else first) in project.dirs for base in dict.fromkeys(("", source_dir))))
+            if not (anchored or rooted or strict or kind == "link"):
                 continue
             seen.add(candidate)
-            pending.append((line, candidate, places, anchored, next(_SEQUENCE)))
+            pending.append((line, candidate, places, anchored, next(_SEQUENCE), rooted and not strict and kind != "link"))
         if kind != "code":
             continue
         for match in _SCRIPT_CMD.finditer(fragment):
@@ -318,9 +352,15 @@ def check_file(project: Project, name: str, text: str, strict: bool, base: Path 
             findings.append(_finding(
                 "missing-script", "warn", f"`make {target}` is given as a command but no Makefile has that target",
                 "fix the command or add the target", name, line, {"command": match.group(0).strip(), "script": target}))
-    generated = ignored_by_git(root, [place for _, _, places, _, _ in pending for place in places])
-    for line, candidate, places, anchored, order in pending:
+    generated = ignored_by_git(root, [place for _, _, places, _, _, _ in pending for place in places])
+    for line, candidate, places, anchored, order, rooted in pending:
         if any(place in generated for place in places):
+            continue
+        if rooted:
+            findings.append(_finding(
+                "missing-path", "info", f"`{candidate}` is named here; neither it nor the directory it sat in exists in the project",
+                "if that directory was removed or moved, update or remove the reference", name, line,
+                {"path": candidate, "anchored": False, "rooted": True}, order))
             continue
         findings.append(_finding(
             "missing-path", "warn", f"`{candidate}` is named here but does not exist in the project",

@@ -170,6 +170,9 @@ def template(tmp_path_factory):
     sh(root, "git", "init", "-q", "-b", "main")
     sh(root, "git", "config", "user.email", "t@example.invalid")
     sh(root, "git", "config", "user.name", "t")
+    # no background maintenance: it writes .git/objects/maintenance.lock while the tests copy this directory
+    sh(root, "git", "config", "gc.auto", "0")
+    sh(root, "git", "config", "maintenance.auto", "false")
     (root / "app.py").write_text("def f():\n    return 1\n")
     (root / "test_app.py").write_text("from app import f\n\ndef test_f():\n    assert f() == 1\n")
     (root / "README.md").write_text("# demo\n")
@@ -180,7 +183,7 @@ def template(tmp_path_factory):
 
 @pytest.fixture
 def repo(template, tmp_path):
-    shutil.copytree(template, tmp_path / "repo")
+    shutil.copytree(template, tmp_path / "repo", ignore=shutil.ignore_patterns("*.lock"))
     return tmp_path / "repo"
 
 

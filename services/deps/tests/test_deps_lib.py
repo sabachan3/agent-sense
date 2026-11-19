@@ -194,3 +194,31 @@ def test_js_import_text_inside_a_string_is_not_an_import(tmp_path):
         "const sample = \"import fake from 'not-real'\"\nconst doc = `use: import x from 'also-not-real'`\n"
         "import {\n  a,\n  b,\n} from 'multi-line'\n")})
     assert rules(check(root)) == [("undeclared-import", "fail", "multi-line")]
+
+
+INLINE = '# /// script\n# dependencies = ["wandb", "torch"]\n# ///\nimport torch\nimport tracking\n'
+
+
+def test_helper_module_is_covered_by_the_inline_block_of_a_script_in_the_same_service(tmp_path):
+    root = project(tmp_path, {"services/inference/adapters/model_a.py": INLINE,
+                              "services/inference/tracking.py": "def start():\n    import wandb\n    return wandb\n"})
+    assert check(root) == []
+
+
+def test_inline_block_of_another_service_or_of_a_root_script_does_not_cover_a_module(tmp_path):
+    root = project(tmp_path, {"services/inference/adapters/model_a.py": INLINE, "run.py": INLINE,
+                              "services/inference/tracking.py": "import wandb\n",
+                              "services/report/report_lib.py": "import wandb\n", "tools/plot.py": "import wandb\n"})
+    found = [(finding["file"], finding["severity"], finding["detail"]["package"]) for finding in check(root)]
+    assert found == [("services/report/report_lib.py", "fail", "wandb"), ("tools/plot.py", "fail", "wandb")]
+
+
+def test_a_script_with_its_own_inline_block_answers_for_itself_and_top_level_directories_group(tmp_path):
+    root = project(tmp_path, {
+        "tools/fetch.py": '# /// script\n# dependencies = ["httpx"]\n# ///\nimport httpx\nimport helper\n',
+        "tools/helper.py": "import httpx\nimport rich\n",
+        "tools/other.py": '# /// script\n# dependencies = ["rich"]\n# ///\nimport rich\nimport httpx\n'})
+    found = [(finding["file"], finding["detail"]["package"]) for finding in check(root)]
+    assert found == [("tools/other.py", "httpx")]
+    assert deps_lib.script_group("services/a/b/c.py") == "services/a" and deps_lib.script_group("tools/x.py") == "tools"
+    assert deps_lib.script_group("x.py") is None and deps_lib.script_group("services/x.py") is None

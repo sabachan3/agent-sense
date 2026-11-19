@@ -280,6 +280,18 @@ def pep723_declared(text: str) -> set[str] | None:
         return set()
 
 
+def script_group(name: str) -> str | None:
+    """The directory tree whose inline script blocks speak for their helper modules.
+
+    `services/<name>` for a file in a service, else the top-level directory. Files at the project
+    root belong to no group: a script there does not declare for the whole project.
+    """
+    parts = name.split("/")
+    if len(parts) >= 3 and parts[0] == "services":
+        return "/".join(parts[:2])
+    return parts[0] if len(parts) >= 2 and parts[0] != "services" else None
+
+
 def command_declared(text: str) -> set[str]:
     """Packages named by `uv run --with X` and `pip install X` in a shell script or workflow."""
     found = set()
@@ -588,14 +600,22 @@ def check_python(root: Path, files: list[str], settings: dict) -> tuple[list[dic
     ignore = {item.lower() for item in settings["ignore"]}
     stdlib = set(sys.stdlib_module_names) | {"__future__", "__main__", "_typeshed"}
     findings, used = [], {}
+    texts = {name: read(root, name) for name in py_files}
+    inline_at: dict[str, set[str]] = {}      # script group -> packages its inline script blocks declare
     for name in py_files:
-        text = read(root, name)
+        inline, group = pep723_declared(texts[name]), script_group(name)
+        if inline and group:
+            inline_at.setdefault(group, set()).update(inline)
+    for name in py_files:
+        text = texts.pop(name)
         imports = python_imports(text)
         if imports is None:
             stats["python_unparsed"] += 1
             continue
         inline = pep723_declared(text)
         declared = set(everywhere) | (inline or set())
+        if inline is None:   # a helper module run through a sibling script that carries the declaration
+            declared |= inline_at.get(script_group(name) or "", set())
         for directory in parents(name):
             declared |= declared_at.get(directory, set())
         is_test = bool(_PY_TEST.search(name))

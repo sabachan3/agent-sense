@@ -28,7 +28,12 @@ looked up on a package index.
   tables, `build-system.requires`), `requirements*.txt` and files under `requirements/`,
   `setup.cfg`, `setup.py`, `Pipfile` and `environment.yml`. A declaration applies to the files in
   its directory and below, so one service's `pyproject.toml` does not cover the next service.
-- An inline script block (PEP 723) declares packages for its own file.
+- An inline script block (PEP 723) declares packages for its own file. It also covers modules
+  without a block of their own in the same service (`services/<name>/` and below) or, outside a
+  services layout, under the same top-level directory: a helper that entry scripts import runs in
+  their environment. It does not reach another service, another top-level directory, or files at
+  the project root, and a file with its own block answers only for itself. The cost: a helper
+  imported by a sibling script that does not declare the package is not reported.
 - `uv run --with X` and `pip install X` in shell scripts, Makefiles, Dockerfiles, git hooks and CI
   workflows declare `X` for the whole project. This is how projects without a `pyproject.toml`
   say what their tests need. It is coarse: the package counts as declared for every file.

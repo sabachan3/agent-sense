@@ -1,0 +1,9 @@
+# agent-sense checks itself
+[done]
+test = "scripts/test.sh"
+
+[hook]
+checks = ["done"]
+
+[all]
+checks = ["done", "deps", "context", "boundary"]

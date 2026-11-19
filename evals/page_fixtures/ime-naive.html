@@ -1,0 +1,3 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Chat naive</title></head><body><h1>Chat</h1><ul id="log"></ul><input id="chat" placeholder="Message">
+<script>const send = el => { document.getElementById('log').appendChild(document.createElement('li')).textContent = el.value; el.value = ''; };
+document.getElementById('chat').addEventListener('keydown', e => { if (e.key === 'Enter') send(e.target); });</script></body></html>

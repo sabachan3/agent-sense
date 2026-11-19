@@ -1,0 +1,13 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Dead controls</title><style>body{font-family:sans-serif;margin:16px}a,[role=button]{cursor:pointer;display:inline-block;padding:4px}</style></head><body>
+<button id="dead">Learn more</button>
+<a id="deadlink">Open settings</a>
+<div role="button" id="deadrole" tabindex="0">Menu</div>
+<a href="#" id="hash-dead">More details</a>
+<button id="alive">Show details</button>
+<a href="#" id="hash-alive">Expand</a>
+<button id="danger">Delete account</button>
+<p id="out"></p>
+<script>
+document.getElementById('alive').addEventListener('click', () => { document.getElementById('out').textContent = 'details'; });
+document.getElementById('hash-alive').addEventListener('click', e => { e.preventDefault(); document.getElementById('out').className = 'open'; });
+</script></body></html>

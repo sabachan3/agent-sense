@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "agent-sense hook stop",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}

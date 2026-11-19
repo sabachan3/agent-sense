@@ -1,0 +1,29 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Orders dashboard</title>
+<style>
+body{font-family:sans-serif;margin:16px}
+.carousel{display:flex;gap:8px;overflow-x:auto;max-width:100%}
+.carousel .slide{flex:0 0 280px;height:80px;background:#ddd}
+.name{width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
+</style></head><body>
+<a href="#main">Skip to content</a>
+<span class="sr-only">Screen reader only heading that is long enough to overflow</span>
+<main id="main">
+<h1>Orders</h1>
+<div class="carousel"><div class="slide">One</div><div class="slide">Two</div><div class="slide">Three</div><div class="slide">Four</div><div class="slide">Five</div><div class="slide">Six</div></div>
+<p class="name">A customer name that is intentionally truncated with an ellipsis</p>
+<button id="toggle" aria-pressed="false">Bold</button>
+<div id="list"><button data-action="add">Add row</button></div>
+<button id="copy">Copy link</button>
+<button id="top">Back to top</button>
+<a href="clean.html">Reload this page</a>
+<input id="chat" placeholder="Message">
+<ul id="log"></ul>
+</main>
+<script>
+document.getElementById('toggle').addEventListener('click', e => e.target.setAttribute('aria-pressed', e.target.getAttribute('aria-pressed') === 'true' ? 'false' : 'true'));
+document.addEventListener('click', e => { if (e.target.dataset && e.target.dataset.action === 'add') document.getElementById('log').appendChild(document.createElement('li')).textContent = 'row'; });
+document.getElementById('copy').addEventListener('click', () => { if (navigator.clipboard) navigator.clipboard.writeText('https://shop.test/orders').catch(() => {}); else document.execCommand('copy'); });
+document.getElementById('top').addEventListener('click', () => window.scrollTo(0, 0));
+document.getElementById('chat').addEventListener('keydown', e => { if (e.isComposing || e.keyCode === 229) return; if (e.key === 'Enter') { document.getElementById('log').appendChild(document.createElement('li')).textContent = e.target.value; e.target.value = ''; } });
+</script></body></html>

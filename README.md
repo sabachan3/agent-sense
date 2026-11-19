@@ -11,6 +11,7 @@ nothing leaves the machine.
 | `agent-sense deps` | Does the code import a package nothing declares? | |
 | `agent-sense context` | Do CLAUDE.md, AGENTS.md and memory files point at files and commands that still exist? | |
 | `agent-sense boundary` | Does one service reach into another service's directory? | |
+| `agent-sense features` | The feature list says passing. Did the feature's own verify command say so? | |
 | `agent-sense launch URL` | For a service aimed at Japan: which outside services does the site send data to, are they named on its policy pages, are the usual pages linked? Reports what was found, not whether the site is lawful. | Playwright |
 | `agent-sense session` | What went wrong repeatedly in past sessions, from the local Claude Code logs? | |
 
@@ -65,6 +66,9 @@ Each has its own page with the rules, how each is decided, the evidence and the 
   `memory-unindexed`, `oversized`.
 - [boundary](docs/boundary.md): `cross-service-import`, `cross-service-syspath`, `cross-service-path`
   for a `services/<name>/` layout.
+- [features](docs/features.md): `features-invalid`, `feature-failing` fail; `passing-unverified`,
+  `no-verify`, `wip-limit` warn. `features.json` lists each feature with the command that proves
+  it; only `agent-sense features --run` writes the state `passing`.
 - [launch](docs/launch.md): `external-undisclosed`, `policy-missing`, `terms-missing`,
   `contact-missing`, `tokushoho-missing`, `tokushoho-incomplete`, `test-key`, `localhost-reference`.
 - [session](docs/session.md): `repeated-failure`, `blind-retry`, `repeated-flow`,
@@ -109,7 +113,12 @@ scripts/test.sh                                   # gate tests, about 2 s, also 
 uv run --no-project --python 3.12 evals/done_eval.py
 uv run --no-project --python 3.12 evals/session_pushback_eval.py
 uv run --no-project --python 3.12 --with playwright evals/page_eval.py
+scripts/setup.sh                                  # once after cloning: hooks, the command on PATH, Chromium
+scripts/e2e.sh                                    # build the wheel, install it, run it on a throwaway repository
+agent-sense features --run                        # every feature's own verification
 ```
+
+For agents working here: [CLAUDE.md](CLAUDE.md), [PROGRESS.md](PROGRESS.md), [DECISIONS.md](DECISIONS.md).
 
 Layout: one directory per check under `services/`, each with its own code and tests and no
 imports from the others; `contracts/` holds the shapes they share; `agent_sense/cli.py` is the

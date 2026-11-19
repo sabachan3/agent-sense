@@ -51,9 +51,9 @@ jobs:
           git config --global user.name ci
           git config --global user.email ci@example.invalid
           git config --global init.defaultBranch main
-      - name: done, deps, context, boundary, session
+      - name: done, deps, context, boundary, features, session
         run: |
-          for check in done deps context boundary; do
+          for check in done deps context boundary features; do
             uv run --quiet --no-project --python 3.12 "evals/${check}_eval.py"
           done
           uv run --quiet --no-project --python 3.12 evals/session_eval.py --skip-field
@@ -89,5 +89,6 @@ jobs:
           agent-sense deps
           agent-sense context
           agent-sense boundary
+          agent-sense features --run --only features
           agent-sense done --run
           agent-sense all

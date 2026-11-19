@@ -1,9 +1,10 @@
 # agent-sense checks itself
 [done]
 test = "scripts/test.sh"
+ignore = ["features.json"]   # `features --run` rewrites states; that must not make the test record stale
 
 [hook]
 checks = ["done"]
 
 [all]
-checks = ["done", "deps", "context", "boundary"]
+checks = ["done", "deps", "context", "boundary", "features"]

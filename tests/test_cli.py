@@ -113,3 +113,20 @@ def test_init_writes_config_and_hook_once(repo, capsys):
 
 def test_all_rejects_unknown_check(repo, capsys):
     assert cli.main(["all", "--root", str(repo), "--checks", "done,nope"]) == 2
+
+
+def test_features_command_runs_only_with_run_and_reads_in_all(repo, capsys):
+    listing = {"version": 1, "features": [{"id": "app", "behavior": "x is set", "verify": 'grep -q "x = 1" app.py',
+                                           "state": "active"}]}
+    (repo / "features.json").write_text(json.dumps(listing))
+    assert cli.main(["features", "--root", str(repo), "--format", "json"]) == 0
+    assert json.loads(capsys.readouterr().out)["stats"]["ran"] == 0           # reading never runs a command
+    assert cli.main(["features", "--root", str(repo), "--run"]) == 0
+    assert json.loads((repo / "features.json").read_text())["features"][0]["state"] == "passing"
+    (repo / "app.py").write_text("x = 2\n")
+    capsys.readouterr()
+    assert cli.main(["all", "--root", str(repo), "--checks", "features"]) == 0   # the record still says it passed
+    assert cli.main(["features", "--root", str(repo), "--run"]) == 1
+    assert "was passing, now fails" in capsys.readouterr().out
+    assert json.loads((repo / "features.json").read_text())["features"][0]["state"] == "active"
+    assert cli.main(["features", "--root", str(repo), "--run", "--only", "nope"]) == 2

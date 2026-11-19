@@ -28,6 +28,7 @@ packages = ["agent_sense"]
 "services/deps/deps_lib.py" = "agent_sense/_services/deps/deps_lib.py"
 "services/context/context_lib.py" = "agent_sense/_services/context/context_lib.py"
 "services/boundary/boundary_lib.py" = "agent_sense/_services/boundary/boundary_lib.py"
+"services/features/features_lib.py" = "agent_sense/_services/features/features_lib.py"
 "services/page/page_lib.py" = "agent_sense/_services/page/page_lib.py"
 "services/launch/launch_lib.py" = "agent_sense/_services/launch/launch_lib.py"
 "services/session/session_lib.py" = "agent_sense/_services/session/session_lib.py"

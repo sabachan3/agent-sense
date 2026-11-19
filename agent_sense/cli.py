@@ -5,6 +5,7 @@
     agent-sense deps              imports that no manifest declares
     agent-sense context           CLAUDE.md / AGENTS.md / memory that point at things that are gone
     agent-sense boundary          one service reaching into another
+    agent-sense features          the feature list: is every feature marked passing backed by a run?
     agent-sense page URL          what the agent cannot see: errors, overflow, dead buttons, IME Enter
     agent-sense launch URL        Japan launch check: third-party tags vs. the notice, required pages
     agent-sense session           what went wrong repeatedly in past sessions, from the local logs
@@ -30,7 +31,7 @@ PACKAGE = Path(__file__).resolve().parent
 # installed: services are shipped inside the package. In the repository: the services/ directory.
 INSTALLED = (PACKAGE / "_services").is_dir()
 SERVICES_DIR = PACKAGE / "_services" if INSTALLED else PACKAGE.parent / "services"
-SERVICES = ("done", "deps", "context", "boundary", "page", "launch", "session")
+SERVICES = ("done", "deps", "context", "boundary", "features", "page", "launch", "session")
 for _service in SERVICES:
     sys.path.insert(0, str(SERVICES_DIR / _service))
 sys.path.insert(0, str(SERVICES_DIR if INSTALLED else PACKAGE.parent))

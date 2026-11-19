@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "features": [
+    {
+      "id": "done",
+      "behavior": "Reports whether the tests passed on the files as they are now and whether the diff weakened them.",
+      "verify": "scripts/test.sh -k test_done_lib && uv run --quiet --no-project --python 3.12 evals/done_eval.py",
+      "state": "passing"
+    },
+    {
+      "id": "stop-hook",
+      "behavior": "The Claude Code Stop hook blocks a stop while a configured check fails, never twice in a row, and never raises.",
+      "verify": "scripts/test.sh -k hook",
+      "state": "passing"
+    },
+    {
+      "id": "deps",
+      "behavior": "Reports imports of packages that no manifest, lock file, command or inline script block declares.",
+      "verify": "scripts/test.sh -k test_deps_lib && uv run --quiet --no-project --python 3.12 evals/deps_eval.py",
+      "state": "passing"
+    },
+    {
+      "id": "context",
+      "behavior": "Reports instruction and memory files that point at paths and scripts that no longer exist.",
+      "verify": "scripts/test.sh -k test_context_lib && uv run --quiet --no-project --python 3.12 evals/context_eval.py",
+      "state": "passing"
+    },
+    {
+      "id": "boundary",
+      "behavior": "Reports a service that imports, puts on sys.path or names a path inside another service.",
+      "verify": "scripts/test.sh -k test_boundary_lib && uv run --quiet --no-project --python 3.12 evals/boundary_eval.py",
+      "state": "passing"
+    },
+    {
+      "id": "features",
+      "behavior": "Moves a feature to passing only when its verify command exits 0 and reports states no run backs.",
+      "verify": "scripts/test.sh -k test_features && uv run --quiet --no-project --python 3.12 evals/features_eval.py",
+      "state": "passing"
+    },
+    {
+      "id": "session",
+      "behavior": "Counts repeated failures, blind retries, repeated flows and unverified endings in local session logs.",
+      "verify": "scripts/test.sh -k test_session_lib && uv run --quiet --no-project --python 3.12 evals/session_eval.py --skip-field && uv run --quiet --no-project --python 3.12 evals/session_pushback_eval.py --quiet",
+      "state": "passing"
+    },
+    {
+      "id": "page",
+      "behavior": "Loads a page in Chromium at three widths and reports errors, overflow, dead controls and Enter submitting during IME input.",
+      "verify": "scripts/test.sh -k test_page_lib && uv run --quiet --no-project --python 3.12 --with playwright evals/page_eval.py",
+      "state": "passing"
+    },
+    {
+      "id": "launch",
+      "behavior": "Reports outside services a site contacts that its policy does not name, and missing policy, terms, contact and statements pages.",
+      "verify": "scripts/test.sh -k test_launch_lib && uv run --quiet --no-project --python 3.12 --with playwright evals/launch_eval.py",
+      "state": "passing"
+    },
+    {
+      "id": "package",
+      "behavior": "The built wheel installs into a clean environment and the installed command runs a full done cycle and a features run.",
+      "verify": "scripts/e2e.sh",
+      "state": "passing"
+    }
+  ]
+}

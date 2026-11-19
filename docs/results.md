@@ -9,13 +9,14 @@ how much noise to expect there, not how often the problems occur in general.
 |---|---|---|---|
 | done | 26 | 14/14 scenarios | `evals/done_eval.py` |
 | page | 80 | 18/18 pages in Chromium | `evals/page_eval.py` |
-| deps | 18 | 14 projects, 17/17 planted findings, 0 unexpected | `evals/deps_eval.py` |
+| deps | 21 | 15 projects, 19/19 planted findings, 0 unexpected | `evals/deps_eval.py` |
 | context | 19 | 11 projects, 14/14 planted, 0 unexpected; real history: 17 of 18 stale references | `evals/context_eval.py` |
 | boundary | 10 | 11 projects, 10/10 planted, 0 unexpected | `evals/boundary_eval.py` |
+| features | 21 | 15/15 scenarios | `evals/features_eval.py` |
 | launch | 61 | 10/10 sites in Chromium | `evals/launch_eval.py` |
 | session | 108 | 18/18 synthetic sessions; pushback on 120 held-out sentences: precision 0.75, recall 0.60 | `evals/session_eval.py`, `evals/session_pushback_eval.py` |
 
-The whole gate (336 tests with the command-line and eval-script tests) runs in about 1.6 s. On every push CI runs
+The whole gate (361 tests with the command-line and eval-script tests) runs in about 1.7 s. On every push CI runs
 the gate on Linux, macOS and Windows, the known-answer evals on Linux and macOS, the two browser
 evals in Chromium on Linux, and builds the wheel, installs it and checks this repository with it.
 
@@ -54,7 +55,9 @@ evals in Chromium on Linux, and builds the wheel, installs it and checks this re
 
 Run on eight local projects (about 2,000 imports, four of them JavaScript with 1,210 imports):
 
-- deps: 2 findings, both true (a package imported in two files and declared nowhere).
+- deps: 2 findings, both false. A helper module imported a package that the entry scripts of the
+  same service declare in their inline script blocks; the check read each block for its own file
+  only. Fixed: a block now covers block-less modules in the same service. After the fix, 0 findings.
 - boundary: no import or `sys.path` reach; 4 path warnings, all intended subprocess calls into a
   shared service, cleared by one `allow` line each.
 - context: 0 findings over 40 checked paths. No real stale reference existed in these files.
@@ -65,6 +68,12 @@ Run on eight local projects (about 2,000 imports, four of them JavaScript with 1
   5,724 checked paths, 85 of the 95 in one monorepo. Not all read.
 
 Lock-file checks were exercised on small synthetic lock files only.
+
+## features
+
+Added 2026-11-20. 15 synthetic scenarios, all matching: a state edited to `passing` by hand, a
+verify command weakened after it passed, a regression, a fresh clone, backlog and blocked items,
+invalid files. No field numbers yet; `scripts/e2e.sh` runs it through the installed wheel.
 
 ## launch
 

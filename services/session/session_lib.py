@@ -67,11 +67,29 @@ CLAIM_PATTERNS = (
     r"\bready to merge\b", r"\b(?:is|are) now (?:fixed|working)\b", r"\bsuccessfully (?:implemented|fixed|completed)\b",
 )
 # Starts of a user message that push back on the previous answer. A heuristic, see the module docstring.
+# Grouped by construction, not by topic, so that a complaint about anything has a chance to match.
 CORRECTION_PATTERNS = (
-    r"いや", r"違(?:う|い)", r"まだ", r"動(?:か|き)(?:ない|ません)", r"エラー", r"失敗", r"直ってい?(?:ない|ません)", r"できてい?(?:ない|ません)",
-    r"(?:表示|反映)され(?:ない|ません|ていない|ていません)", r"引き続き", r"同じ(?:エラー|問題|症状)", r"おかしい", r"変わってい?(?:ない|ません)",
-    r"\bnot working\b", r"\bstill\b", r"\bdoes(?:n't| not) work\b", r"\bwrong\b", r"\bbroken\b", r"\bfail(?:s|ed|ing)?\b",
-    r"\berror\b", r"^no[,. ]", r"\bthat'?s not\b", r"\bdidn'?t\b",
+    # flat contradiction, or "that is not what I meant"
+    r"いや", r"違(?:う|い)", r"嘘", r"^(?:これ|それ|そこ)は.{0,20}では(?:なく|ない|ありません)", r"について(?:聞|訊|言)いて",
+    r"(?:方|ほう)が(?:いい|良い|よい)のでは",
+    # still happening
+    r"まだ.{0,12}(?:ない|ません|ます(?!か)|ている|てる|エラー|同じ)", r"引き続き", r"同じ(?:エラー|問題|症状|現象)", r"相変わらず",
+    # the expected thing does not happen: a verb of working, showing or arriving, negated
+    r"(?:動(?:か|き)|でき|出来|され|入(?:ら|り)|出|見え|見れ|開(?:か|き|け)|届(?:か|き)|映(?:ら|り)|変わ(?:ら|り)|直(?:ら|り)|通(?:ら|り)|消え|反映(?:し|され)|解決(?:し|され)"
+    r"|起き|合っ|合わ|足り|読め|使え|押せ|進(?:ま|み)|終わ(?:ら|り)|止ま(?:ら|り)|戻(?:ら|り)|始ま(?:ら|り)|表示し)"
+    r"(?:てい?)?(?:ない|ません|なく|ず(?:に|、|,))",
+    # an unwanted result
+    r"エラー(?!時|ハンドリング|処理|表示|メッセージ|画面|ページ|の(?:場合|とき|時))", r"失敗(?!時|した(?:とき|時|場合|ら)|する(?:と|場合))", r"バグ(?!報告|トラッカー)",
+    r"(?:た|だ)のに", r"はず(?:です|だ|なのに)", r"のまま(?:です|だ|に|で)", r"崩れ", r"(?:と言った|頼んだのは|お願いしたのは|依頼したのは)",
+    r"(?:前|元)の(?:ほう|方)が", r"元に戻", r"(?<!\d)(?:40[0-4]|50[0-4])(?!\d)", r"不具合", r"おかしい", r"(?:現象|症状)", r"(?:て|で)しまっ(?:て|た)", r"すぎ(?:る|て|です|ます|だ)",
+    r"(?:にく|づら)い", r"(?:のが|のは)嫌", r"気にな(?:る|り|って)", r"(?:現状|今|いま)の(?:実装|仕様|設定|状態)(?:だと|では)", r"このままだと",
+    # asked to redo, to stop, or to do something about it
+    r"直し(?:て|た|、|,)", r"修正して", r"ないでください", r"(?:なんとか|どうにか)(?:でき|なり|なら)(?:ませんか|ないですか|ない(?:の|か))",
+    r"\bnot working\b", r"\bstill\b", r"\bdoes(?:n't| not) work\b", r"\bwrong\b", r"\bbroken\b", r"\bfail(?:s|ed|ing|ure)?\b",
+    r"\berrors?\b(?! (?:handling|messages?|pages?|states?|boundar|logging|codes?\b))", r"^no[,. ]", r"^nope\b", r"\bthat'?s not\b", r"\b(?:did|is|was|does|should)(?:n't| not)\b", r"\bcan(?:'t|not)\b",
+    r"\bunable to\b", r"\bincorrect\b", r"\bbugs?\b", r"\bforbidden\b", r"\bdenied\b", r"\btraceback\b", r"\bexception\b",
+    r"\bnot found\b", r"\binstead of\b", r"\bagain\b", r"\bput (?:it|that|them) back\b", r"\bI (?:said|asked|told|wanted|meant)\b",
+    r"\bshould (?:be|have)\b", r"\b(?:revert|undo)\b", r"\bcrash(?:es|ed|ing)?\b", r"\bmissing\b",
 )
 
 EDIT_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
@@ -533,6 +551,16 @@ def interruption_counts(sessions: list[dict]) -> dict:
     return {"interruptions": interrupts, "denials": sum(denials.values()), "denial_kinds": dict(denials.most_common())}
 
 
+def pushback(reply: str) -> str | None:
+    """The phrase that makes a user message read as pushback on the answer before it, or None.
+
+    Only the first CORRECTION_WINDOW characters are searched: a complaint comes first, and a long
+    pasted log further down would match almost any word list.
+    """
+    match = _CORRECTION.search(reply[:CORRECTION_WINDOW])
+    return match.group(0) if match else None
+
+
 def claim_outcomes(session: dict, patterns=TEST_PATTERNS) -> list[dict]:
     """Completion claims of one main session and what followed each.
 
@@ -558,12 +586,12 @@ def claim_outcomes(session: dict, patterns=TEST_PATTERNS) -> list[dict]:
         failing = next((event for event in events[last + 1:window_end]
                         if event["kind"] == "tool" and test_outcome(event, patterns) == "fail"), None)
         reply = events[end]["text"] if end < len(events) else ""
-        correction = _CORRECTION.search(reply[:CORRECTION_WINDOW])
+        correction = pushback(reply)
         outcome = "failing-test" if failing else "pushback" if correction else "none"
         claims.append({"session": session["session"], "project": session["project"], "ts": events[last].get("ts"),
                        "claim": match.group(0), "outcome": outcome,
                        "command": normalise_command(_command(failing)) if failing else None,
-                       "correction": correction.group(0) if correction and not failing else None})
+                       "correction": correction if not failing else None})
     return claims
 
 

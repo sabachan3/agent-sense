@@ -38,7 +38,8 @@ Instruction files are full of things that look like paths and are not. These are
 - placeholders and patterns: anything with `<>`, `{}`, `$`, `*`, `?`, `...`, `X.Y.Z`,
   `path/to`, `foo`, `bar`, `your-`;
 - URLs, `~` paths, and absolute paths outside the project and the home directory, or under
-  `/tmp`, `/var`, `/private`;
+  `/tmp`, `/var`, `/private`. A Windows path with a drive letter (`C:\dir\file` or `C:/dir/file`)
+  counts as absolute and is reported with forward slashes;
 - paths that `.gitignore` covers (outputs that need not exist yet);
 - a bare file name that exists anywhere in the project;
 - **unanchored paths**. A path is reported only when the directory it sits in exists. With

@@ -77,7 +77,13 @@ def test_paths_resolve_from_the_root_or_from_the_instruction_file(tmp_path):
 def test_absolute_paths_under_the_project_are_checked(tmp_path):
     root = project(tmp_path, {**BASE})
     (root / "CLAUDE.md").write_text(f"Use `{root}/scripts/test.sh` and `{root}/scripts/gone.sh`, not `/usr/bin/env`.\n")
-    assert found(check(root)) == [("missing-path", 1, f"{root}/scripts/gone.sh")]
+    assert found(check(root)) == [("missing-path", 1, (root / "scripts/gone.sh").as_posix())]
+
+
+def test_windows_absolute_paths_are_read_with_either_slash():
+    assert context_lib.path_candidate(r"C:\proj\scripts\gone.sh", "code") == "C:/proj/scripts/gone.sh"
+    assert context_lib.path_candidate("C:/proj/scripts/gone.sh", "code") == "C:/proj/scripts/gone.sh"
+    assert context_lib.path_candidate(r"scripts\gone.sh", "code") is None   # a backslash elsewhere is an escape, not a path
 
 
 def test_missing_npm_scripts_and_make_targets(tmp_path):

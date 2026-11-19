@@ -89,8 +89,12 @@ Each claim is followed up to the end of the user's next turn:
   as an error, or when its output says so (`2 failed`, `FAILED ...`, `--- FAIL`), which covers
   `pytest | tail` where the shell reports success.
 - **pushback** (heuristic): no test failed, and the first 120 characters of the user's next
-  message contain a word from `CORRECTION_PATTERNS` (まだ, エラー, 失敗, 表示されない, 同じエラー,
-  "still", "not working", "wrong", "error" and similar).
+  message match one of `CORRECTION_PATTERNS`. The patterns are constructions, not topics: a flat
+  contradiction (いや, 違う, "that's not"), something still happening (まだ…ません, 相変わらず, "still"),
+  an expected thing negated (動きません, 反映されていない, 届かない, "doesn't", "can't"), an unwanted result
+  (エラー, 〜てしまって, 〜すぎる, 〜づらい, 〜たのに, 〜のままです, 404, "crashes", "missing"), and a request to
+  redo or stop (直して, 〜ないでください, 元に戻して, "put it back", "I said"). Neutral uses of the same words
+  are excluded where they are common (エラー時の表示, 失敗したとき, "error handling", まだですか).
 
 The two are counted separately: `claims_then_failing_test` and `claims_then_pushback`. Read the
 second as "sessions worth a look", not as a measurement.
@@ -120,9 +124,14 @@ tool result marked interrupted) and denied tool calls, by kind and tool. Kinds s
   that edit through the shell.
 - **A failed command is a non-zero exit code.** A command that prints an error and exits 0 is not
   counted, except for test commands, whose output is read.
-- **Pushback detection is a word list.** On the local logs of the first field run it flagged 3 of
-  37 claims, and all 3 were real defect reports; at least 2 other complaints, phrased without any
-  listed word, were missed. Too few cases to state a rate.
+- **Pushback detection is a pattern list.** Measured by `evals/session_pushback_eval.py` on 120
+  sentences written by an agent that never saw the patterns (60 pushback, 60 not, hard negatives
+  included): precision 0.75, recall 0.60. The word list of version 0.1.0 scores 0.58 and 0.32 on
+  the same sentences. On 149 hand-labelled messages of the local logs, which were read while the
+  patterns were written and so flatter them: precision 0.88, recall 0.91 (0.92 and 0.33 before).
+  So about one flag in four is not a complaint and four complaints in ten go unseen. What it
+  misses is a complaint stated as a plain fact ("the sidebar is on the right"), which no list of
+  phrases can tell from a status report without knowing what was asked.
 - **Claims are phrases.** A report that says the work is finished in other words is not a claim,
   and a sentence such as "実装しました" inside a progress note at the end of a turn is.
 - **The window is one turn.** A defect found three turns later is not attributed to the claim.
@@ -136,6 +145,10 @@ tool result marked interrupted) and denied tool calls, by kind and tool. Kinds s
   never message text. The report still describes private work, so treat it as private.
 
 ## Evals
+
+`evals/session_pushback_eval.py` measures the pushback heuristic alone: development sentences (must
+stay at 0.95), held-out sentences (floors 0.70 precision and 0.55 recall, just under the first
+measurement) and, when `runs/session_pushback_labels.json` exists, the hand-labelled local messages.
 
 `evals/session_eval.py` has 18 synthetic cases, each built to trigger one rule or to stay just
 below it, and requires all of them to be correct. Its field run writes the full tables for the

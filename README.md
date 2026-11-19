@@ -98,13 +98,16 @@ with the findings read by hand. The samples are small and come from one person's
 - `launch` is not legal advice, cannot see tags behind a consent banner or a login, and depends on
   a hand-made vendor table.
 - `session` reads a log format that is internal to Claude Code and can change with any release.
-- Built and run on macOS only.
+- Built on macOS. CI runs the gate tests on Linux, macOS and Windows and the evals on Linux and
+  macOS; `page` and `launch` were never run on Windows. On Windows the `done` test command runs
+  through `cmd.exe`.
 
 ## Development
 
 ```bash
 scripts/test.sh                                   # gate tests, about 2 s, also the pre-commit hook
 uv run --no-project --python 3.12 evals/done_eval.py
+uv run --no-project --python 3.12 evals/session_pushback_eval.py
 uv run --no-project --python 3.12 --with playwright evals/page_eval.py
 ```
 

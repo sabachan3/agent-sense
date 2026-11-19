@@ -57,6 +57,7 @@ jobs:
             uv run --quiet --no-project --python 3.12 "evals/${check}_eval.py"
           done
           uv run --quiet --no-project --python 3.12 evals/session_eval.py --skip-field
+          uv run --quiet --no-project --python 3.12 evals/session_pushback_eval.py --quiet
 
   browser-evals:
     name: page and launch evals in Chromium

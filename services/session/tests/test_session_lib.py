@@ -355,3 +355,33 @@ def test_add_arguments_defaults():
     lib.add_arguments(parser)
     args = parser.parse_args([])
     assert (args.logs, args.since, args.top, args.all_projects, args.test_pattern) == ("~/.claude/projects", 30, 5, False, [])
+
+
+# pushback: the constructions the heuristic is built on, one sentence each, and the neutral
+# sentences that share a word with them. The measured rates are in evals/session_pushback_eval.py.
+@pytest.mark.parametrize("text", [
+    "いや、そっちではないです", "それは違います", "まだ同じ警告が出ています", "相変わらず遅いです",
+    "ボタンを押しても何も起きません", "通知が届きません", "保存したのに反映されていません", "ログインできなくなりました",
+    "消してはいけないファイルまで消えてしまっています", "余白が広すぎるのが気になります", "このメニューは使いづらいです",
+    "今の実装だと片方が消えます", "毎回ログアウトされるのをなんとかできませんか", "勝手に追加しないでください",
+    "作り直してほしいです", "これは検証用ではなく本番です", "日本語のはずです", "画面が真っ白のままです", "グラフが崩れています",
+    "リンクを押すと404になります", "頼んだのは英語版です", "元に戻してください", "デプロイしたらエラーになりました",
+    "It still crashes", "That's not what I asked for", "The button doesn't do anything", "No, the other file",
+    "I'm getting a 500 error on save", "It can't find the module", "I said green", "put it back", "the total should be 42",
+])
+def test_pushback_constructions(text):
+    assert lib.pushback(text)
+
+
+@pytest.mark.parametrize("text", [
+    "ありがとうございます。次に進んでください", "pushしちゃってください", "検索機能も追加してほしいです", "時間はまだありますか",
+    "まだですか", "エラー時の表示も作ってください", "失敗したときにリトライする機能を追加したいです", "他に必要な設定はありますか？",
+    "動きました！ありがとう", "Aの案でお願いします", "全部進めちゃいましょう", "Looks good, ship it",
+    "Let's add error handling to the upload form", "Can you also write the docs?", "Works now, thank you", "yes, go ahead",
+])
+def test_neutral_messages_are_not_pushback(text):
+    assert lib.pushback(text) is None
+
+
+def test_pushback_reads_only_the_start_of_the_message():
+    assert lib.pushback("次の機能に進みましょう。" + "あ" * lib.CORRECTION_WINDOW + "エラー") is None

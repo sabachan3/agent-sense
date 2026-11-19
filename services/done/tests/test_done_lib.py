@@ -1,5 +1,6 @@
 import argparse
 import shutil
+import sys
 import subprocess
 
 import done_lib
@@ -204,7 +205,8 @@ def test_repo_flow_run_then_edit_then_rerun(repo):
 
 
 def test_repo_failed_run_is_reported_with_output(repo):
-    found = check(repo, test="echo boom-output; exit 3", run=True)
+    # one program, no shell syntax: the command goes through cmd.exe on Windows and sh elsewhere
+    found = check(repo, test=f'"{sys.executable}" -c "print(\'boom-output\'); raise SystemExit(3)"', run=True)
     assert rules(found) == ["tests-failed"]
     assert "exit 3" in found[0]["message"] and found[0]["detail"]["lines"] == ["boom-output"]
 

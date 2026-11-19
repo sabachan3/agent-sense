@@ -50,6 +50,7 @@ _FRONT_NAME = re.compile(r"(?m)^name:\s*[\"']?([^\"'\n]+?)[\"']?\s*$")
 # copies of whole projects and tool state that live under .claude, not instructions
 _NOT_INSTRUCTIONS = re.compile(r"(^|/)\.claude/(worktrees|projects|plugins|todos|plans|shell-snapshots|statsig|cache|"
                                r"file-history|session-env|tasks|ide|backups|debug|paste-cache|telemetry)/")
+_DRIVE = re.compile(r"^[A-Za-z]:[\\/]")   # a Windows absolute path, C:\\dir or C:/dir
 _WIKI = re.compile(r"\[\[([^\]\n|#]+)(?:[|#][^\]\n]*)?\]\]")
 
 
@@ -158,10 +159,13 @@ def path_candidate(token: str, kind: str) -> str | None:
         return None
     if "://" in token or token.startswith("~"):
         return None
+    drive = bool(_DRIVE.match(token))
+    if drive:
+        token = token.replace("\\", "/")   # reported and compared with forward slashes
     if _PLACEHOLDER.search(token) or "=" in token or "//" in token:
         return None
-    absolute = token.startswith("/")
-    body = token.lstrip("/") if absolute else token
+    absolute = drive or token.startswith("/")
+    body = token[3:] if drive else token.lstrip("/") if absolute else token
     if not _PATHLIKE.match(body):
         return None
     last = body.rstrip("/").rsplit("/", 1)[-1]
@@ -257,12 +261,13 @@ def check_file(project: Project, name: str, text: str, strict: bool, base: Path 
             if candidate is None or candidate in seen:
                 continue
             project.checked += 1
-            if candidate.startswith("/"):
+            if candidate.startswith("/") or _DRIVE.match(candidate):
                 target = Path(candidate)
-                home = Path.home()
-                inside = any(str(target).startswith(str(prefix) + "/") for prefix in (root, home))
-                if not inside or (not str(target).startswith(str(root) + "/")
-                                  and candidate.startswith(("/tmp/", "/var/", "/private/"))):
+                # Windows names are compared without regard to case, and always with forward slashes
+                fold = str.casefold if _DRIVE.match(candidate) else str
+                under = lambda prefix: fold(candidate).startswith(fold(prefix.as_posix()) + "/")  # noqa: E731
+                if not (under(root) or under(Path.home())) or (
+                        not under(root) and candidate.startswith(("/tmp/", "/var/", "/private/"))):
                     continue
                 seen.add(candidate)
                 if not target.exists() and target.parent.exists():

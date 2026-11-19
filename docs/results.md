@@ -10,12 +10,14 @@ how much noise to expect there, not how often the problems occur in general.
 | done | 26 | 14/14 scenarios | `evals/done_eval.py` |
 | page | 80 | 18/18 pages in Chromium | `evals/page_eval.py` |
 | deps | 18 | 14 projects, 17/17 planted findings, 0 unexpected | `evals/deps_eval.py` |
-| context | 15 | 11 projects, 14/14 planted, 0 unexpected | `evals/context_eval.py` |
+| context | 16 | 11 projects, 14/14 planted, 0 unexpected | `evals/context_eval.py` |
 | boundary | 10 | 11 projects, 10/10 planted, 0 unexpected | `evals/boundary_eval.py` |
 | launch | 56 | 10/10 sites in Chromium | `evals/launch_eval.py` |
-| session | 59 | 18/18 synthetic sessions | `evals/session_eval.py` |
+| session | 108 | 18/18 synthetic sessions; pushback on 120 held-out sentences: precision 0.75, recall 0.60 | `evals/session_eval.py`, `evals/session_pushback_eval.py` |
 
-The whole gate (274 tests with the command-line tests) runs in about 1.6 s.
+The whole gate (324 tests with the command-line tests) runs in about 1.6 s. On every push CI runs
+the gate on Linux, macOS and Windows, the known-answer evals on Linux and macOS, the two browser
+evals in Chromium on Linux, and builds the wheel, installs it and checks this repository with it.
 
 ## done
 
@@ -79,8 +81,18 @@ Two of five ended sessions with edits never ran a test. The only repeated flow w
 commit. With this few large sessions the numbers cannot rank which problem is most common, and
 the wording-based pushback detection missed at least two complaints.
 
+**Pushback heuristic, measured on 2026-11-20.** 149 user messages of the local logs were labelled by
+hand (33 pushback). The word list of 0.1.0 found 11 of them (recall 0.33, precision 0.92). The
+patterns were rewritten as constructions and score recall 0.91, precision 0.88 on those messages,
+which were read while writing them. On 120 sentences written by an agent that never saw the
+patterns: precision 0.75, recall 0.60 (0.1.0: 0.58 and 0.32). The held-out number is the one to
+believe. The labels are one person's reading.
+
 ## Not done
 
-- Nothing was run on Windows or Linux.
+- On Linux only the gate tests and the known-answer evals were run, on Windows only the gate
+  tests (in CI). No field run and no browser run on Windows. The first Windows run found two
+  defects, both fixed: absolute paths with a drive letter were not read by `context`, and one
+  `done` test used `sh` syntax.
 - No finding was judged by a second person.
 - False negatives were not measured for any check outside the planted cases.

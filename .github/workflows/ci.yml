@@ -1,0 +1,92 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: gate ${{ matrix.os }} py${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.12"]
+        include:
+          - { os: ubuntu-latest, python: "3.11" }
+          - { os: ubuntu-latest, python: "3.13" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: gate tests
+        shell: bash
+        env:
+          AGENT_SENSE_PYTHON: ${{ matrix.python }}
+        run: scripts/test.sh
+
+  evals:
+    name: known-answer evals ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: git identity for the throwaway repositories
+        run: |
+          git config --global user.name ci
+          git config --global user.email ci@example.invalid
+          git config --global init.defaultBranch main
+      - name: done, deps, context, boundary, session
+        run: |
+          for check in done deps context boundary; do
+            uv run --quiet --no-project --python 3.12 "evals/${check}_eval.py"
+          done
+          uv run --quiet --no-project --python 3.12 evals/session_eval.py --skip-field
+
+  browser-evals:
+    name: page and launch evals in Chromium
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: install Chromium
+        run: uv run --quiet --no-project --python 3.12 --with playwright playwright install --with-deps chromium-headless-shell
+      - name: page
+        run: uv run --quiet --no-project --python 3.12 --with playwright evals/page_eval.py
+      - name: launch
+        run: uv run --quiet --no-project --python 3.12 --with playwright evals/launch_eval.py
+
+  package:
+    name: build, install, run the installed command
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: build wheel and sdist
+        run: uv build
+      - name: install the wheel and check this repository with it
+        run: |
+          uv tool install --python 3.12 dist/*.whl
+          agent-sense --help
+          agent-sense deps
+          agent-sense context
+          agent-sense boundary
+          agent-sense done --run
+          agent-sense all

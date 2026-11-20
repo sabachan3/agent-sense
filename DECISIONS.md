@@ -17,12 +17,12 @@ would otherwise be re-argued by the next session.
   in `CLAUDE.md`. Why: the earlier "under 2 s" was not met on a machine in normal use and made the
   definition of done unreachable as written. Rejected: removing tests; a budget on wall clock
   (it moves with machine load more than with the code).
-
-## 2026-11-20: output is cleaned by what a character is, not by a list of known bad ones
-
   Approved by the owner on 2026-11-20, as an exception for this repository to the general 2 s
   rule. Rejected: moving the tests that start git or an interpreter out of the gate, which would
   keep 2 s but shrink what every commit checks.
+
+## 2026-11-20: output is cleaned by what a character is, not by a list of known bad ones
+
 - **Decision.** `clean()` drops every character for which `str.isprintable()` is false; `json_text()`
   writes every character of category Cc, Cf, Zl, Zp, Cs or Co as a `\u` escape. The Stop hook's
   answer is printed as ASCII-only JSON, and everything the hook does, including building and

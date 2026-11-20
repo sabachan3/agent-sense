@@ -11,9 +11,10 @@ import pytest
 
 # Commands built from the running interpreter, so they mean the same under sh and under cmd.exe.
 # Only double quotes are used inside them; neither shell changes text in double quotes here.
-OK = f'"{sys.executable}" -c "pass"'
-BAD = f'"{sys.executable}" -c "print(\'boom\'); raise SystemExit(3)"'
-SLOW = f'"{sys.executable}" -c "import time; time.sleep(3)"'
+# -S skips the site module: these one-liners need nothing from it and start about 5 ms sooner.
+OK = f'"{sys.executable}" -S -c "pass"'
+BAD = f'"{sys.executable}" -S -c "print(\'boom\'); raise SystemExit(3)"'
+SLOW = f'"{sys.executable}" -S -c "import time; time.sleep(3)"'
 
 
 def project(tmp_path: Path, features, git: bool = False, name: str = "features.json") -> Path:
@@ -47,7 +48,7 @@ def states(root: Path, name: str = "features.json") -> dict:
 def test_interface_matches_the_contract():
     assert features_lib.NAME == "features" and features_lib.SUMMARY
     assert set(features_lib.RULES) == {"features-invalid", "feature-failing", "no-verify", "wip-limit",
-                                       "passing-unverified", "no-feature-list"}
+                                       "passing-unverified", "no-feature-list", "manual-not-run"}
     parser = argparse.ArgumentParser()
     features_lib.add_arguments(parser)
     assert parser.parse_args([]).run is False
@@ -93,7 +94,7 @@ def test_run_moves_states_only_by_the_exit_code(tmp_path):
     assert "`b` was passing, now fails" in regressed["message"] and "exited 3" in regressed["message"]
     assert regressed["detail"]["lines"] == ["boom"] and "`c` verification fails" in failing["message"]
     assert result["stats"] == {"features": 5, "not_started": 1, "active": 2, "blocked": 1, "passing": 1, "ran": 3,
-                               "verified_completion_rate": 0.25}
+                               "verified_completion_rate": 0.25, "manual_left_out": 0}
     record = json.loads((root / ".git" / "agent-sense" / "features.json").read_text(encoding="utf-8"))["runs"]
     assert set(record) == {"a", "b", "c"} and record["a"]["passed"] and record["b"]["exit"] == 3
     assert record["b"]["command"] == BAD and record["b"]["tail"] == ["boom"] and record["b"]["at"] > 0
@@ -438,3 +439,38 @@ def test_signal_handlers_are_put_back_and_handled_signals_are_left_alone():
     assert {number: signal.getsignal(number) for number in before} == before
     assert all(inside[number] is features_lib._raise_signalled for number in guard.previous)
     assert all(inside[number] is before[number] for number in before if number not in guard.previous)
+
+
+def test_manual_features_are_left_out_of_a_plain_run_and_named(tmp_path):
+    marker = tmp_path / "ran.txt"
+    costly = f'"{sys.executable}" -S -c "open(r\'{marker}\', \'a\').write(\'x\')"'
+    root = project(tmp_path, [feature("cheap", "active"), feature("costly", "passing", costly, manual=True),
+                              feature("later", "not_started", costly, manual=True)], git=True)
+    result = check(root, run=True)
+    assert not marker.exists() and states(root) == {"cheap": "passing", "costly": "passing", "later": "not_started"}
+    assert ("manual-not-run", "info") in rules(result) and ("passing-unverified", "warn") in rules(result)
+    named = next(finding for finding in result["findings"] if finding["rule"] == "manual-not-run")
+    assert named["detail"]["ids"] == ["costly"] and "costly" in named["message"]   # not_started is never run anyway
+    assert result["stats"]["ran"] == 1 and result["stats"]["manual_left_out"] == 1
+
+
+def test_only_and_include_manual_run_manual_features(tmp_path):
+    marker = tmp_path / "ran.txt"
+    costly = f'"{sys.executable}" -S -c "open(r\'{marker}\', \'a\').write(\'x\')"'
+    root = project(tmp_path, [feature("cheap", "active"), feature("costly", "active", costly, manual=True)], git=True)
+    result = check(root, run=True, only=["costly"])
+    assert marker.read_text() == "x" and states(root)["costly"] == "passing"
+    assert "manual-not-run" not in [rule for rule, _ in rules(result)]
+    result = check(root, run=True, include_manual=True)
+    assert marker.read_text() == "xx" and result["stats"]["ran"] == 2 and result["stats"]["manual_left_out"] == 0
+    assert rules(result) == []
+
+
+def test_manual_is_read_like_any_feature_and_must_be_a_boolean(tmp_path):
+    root = project(tmp_path, [feature("costly", "passing", manual=True)], git=True)
+    assert rules(check(root)) == [("passing-unverified", "warn")]          # reading rules do not change
+    with pytest.raises(RuntimeError):
+        check(root, include_manual=True)                                    # needs --run
+    bad = project(tmp_path / "bad" if (tmp_path / "bad").mkdir() is None else tmp_path, [feature("a", manual="yes")])
+    assert rules(check(bad)) == [("features-invalid", "fail")]
+    assert rules(check(project(bad, [feature("a", manual=False)]), run=True)) == []

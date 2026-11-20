@@ -27,7 +27,7 @@ from pathlib import Path
 NAME = "features"
 SUMMARY = "the feature list: is every feature marked passing backed by a verification run?"
 RULES = {"features-invalid": "fail", "feature-failing": "fail", "no-verify": "warn", "wip-limit": "warn",
-         "passing-unverified": "warn", "no-feature-list": "info"}
+         "passing-unverified": "warn", "no-feature-list": "info", "manual-not-run": "info"}
 
 STATES = ("not_started", "active", "blocked", "passing")
 RUN_STATES = ("active", "passing")
@@ -146,6 +146,8 @@ def load(path: Path, shown: str) -> tuple[dict | None, list[dict]]:
             problems.append(f"{label} has the state {feature.get('state')!r}")
         if not isinstance(feature.get("verify", ""), str):
             problems.append(f"{label} has a verify value that is not text")
+        if not isinstance(feature.get("manual", False), bool):
+            problems.append(f"{label} has a manual value that is not true or false")
     return data, [_finding("features-invalid", f"{shown}: {problem}", fix, shown) for problem in problems]
 
 
@@ -314,14 +316,19 @@ def _with_states(text: str, data: dict) -> str:
 
 
 def run_features(root: Path, path: Path, shown: str, data: dict, only: list[str], timeout: float,
-                 text: str) -> tuple[list[dict], int]:
-    """Run the verify commands, record the outcomes, and move the states. Returns findings and the number run."""
+                 text: str, include_manual: bool = False) -> tuple[list[dict], int, list[str]]:
+    """Run the verify commands, record the outcomes, and move the states. Returns findings, the number
+    run, and the ids left out because they are marked `manual` (costly: a model, a GPU, minutes of
+    browser time) and neither `--only` nor `--include-manual` asked for them."""
     runs = read_record(root)
-    findings, ran, changed = [], 0, False
+    findings, ran, changed, left_out = [], 0, False, []
     for feature in data["features"]:
         identity, command = feature["id"], command_of(feature)
         chosen = identity in only if only else feature["state"] in RUN_STATES
         if not chosen or not command:
+            continue
+        if feature.get("manual") is True and not only and not include_manual:
+            left_out.append(identity)
             continue
         before = feature["state"]
         outcome = verify(root, command, timeout)
@@ -359,7 +366,7 @@ def run_features(root: Path, path: Path, shown: str, data: dict, only: list[str]
                                        f"({second}), so the list and the record disagree") from error
                 raise RuntimeError(f"{error}; {shown} was put back as it was, no state was changed") from error
             raise
-    return findings, ran
+    return findings, ran, left_out
 
 
 # ---------------------------------------------------------------- reading only
@@ -434,6 +441,8 @@ def add_arguments(parser) -> None:
                         help="run the verify command of every active or passing feature and update the states")
     parser.add_argument("--only", action="append", metavar="ID",
                         help="with --run: run just this feature, whatever its state (repeatable)")
+    parser.add_argument("--include-manual", action="store_true",
+                        help="with --run: also run the features marked \"manual\": true")
     parser.add_argument("--timeout", type=float, metavar="SEC",
                         help=f"seconds one verify command may take (default {DEFAULT_TIMEOUT})")
 
@@ -467,9 +476,12 @@ def run(args) -> dict:
                if not command_of(next(feature for feature in data["features"] if feature["id"] == identity))]
     if missing:
         raise RuntimeError(f"{', '.join(missing)} has no verify command to run")
+    include_manual = bool(getattr(args, "include_manual", False))
+    if include_manual and not running:
+        raise RuntimeError("--include-manual needs --run")
     wip = config.get("wip", DEFAULT_WIP)
     wip = wip if isinstance(wip, int) and not isinstance(wip, bool) and wip >= 0 else DEFAULT_WIP
-    ran = 0
+    ran, left_out = 0, []
     if running:
         try:
             text = read_text(path)
@@ -480,7 +492,14 @@ def run(args) -> dict:
         except (ValueError, RecursionError) as error:
             raise RuntimeError(f"{shown} cannot be written back ({type(error).__name__}: {str(error)[:120]}); "
                                "nothing was run") from error
-        findings, ran = run_features(root, path, shown, data, only, timeout, text)
+        findings, ran, left_out = run_features(root, path, shown, data, only, timeout, text, include_manual)
+        if left_out:   # they still answer for their own record, like any feature that was not run
+            findings += record_findings(root, shown, {"features": [feature for feature in data["features"]
+                                                                   if feature["id"] in left_out]})
+            findings.append(_finding(
+                "manual-not-run", f"{len(left_out)} feature(s) marked manual were not run: {', '.join(left_out)}",
+                "run one with `agent-sense features --run --only ID`, or all with `--include-manual`", shown,
+                detail={"ids": left_out}))
         if only:   # the features not run still answer for their own record
             others = {"features": [feature for feature in data["features"] if feature["id"] not in only]}
             findings += record_findings(root, shown, others)
@@ -496,4 +515,4 @@ def run(args) -> dict:
         if override in ("fail", "warn", "info"):
             finding["severity"] = override
         kept.append(finding)
-    return {"findings": kept, "stats": stats_of(data, ran)}
+    return {"findings": kept, "stats": {**stats_of(data, ran), "manual_left_out": len(left_out)}}

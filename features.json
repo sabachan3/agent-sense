@@ -47,13 +47,15 @@
       "id": "page",
       "behavior": "Loads a page in Chromium at three widths and reports errors, overflow, dead controls and Enter submitting during IME input.",
       "verify": "scripts/test.sh -k test_page_lib && uv run --quiet --no-project --python 3.12 --with playwright evals/page_eval.py",
-      "state": "passing"
+      "state": "passing",
+      "manual": true
     },
     {
       "id": "launch",
       "behavior": "Reports outside services a site contacts that its policy does not name, and missing policy, terms, contact and statements pages.",
       "verify": "scripts/test.sh -k test_launch_lib && uv run --quiet --no-project --python 3.12 --with playwright evals/launch_eval.py",
-      "state": "passing"
+      "state": "passing",
+      "manual": true
     },
     {
       "id": "package",

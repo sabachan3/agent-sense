@@ -154,6 +154,22 @@ SECOND = [
 ]
 SCENARIOS += SECOND
 
+# A feature whose verification is costly (a model, a GPU, minutes of browser time) is marked manual.
+MANUAL = [
+    {"name": "a plain run leaves a manual feature out, names it, and still reports its unverified claim",
+     "start": [entry("add", "active", ADD), {**entry("sub", "passing", SUB), "manual": True}], "steps": [("run", {})],
+     "expect": [("manual-not-run", "info", None), ("passing-unverified", "warn", "sub")],
+     "states": {"add": "passing", "sub": "passing"}},
+    {"name": "--include-manual runs it and takes the false claim back",
+     "start": [entry("add", "active", ADD), {**entry("sub", "passing", SUB), "manual": True}],
+     "steps": [("run", {"include_manual": True})],
+     "expect": [("feature-failing", "fail", "sub")], "states": {"add": "passing", "sub": "active"}},
+    {"name": "--only runs a manual feature by name",
+     "start": [{**entry("add", "active", ADD), "manual": True}], "steps": [("run", {"only": ["add"]})],
+     "expect": [], "states": {"add": "passing"}},
+]
+SCENARIOS += MANUAL
+
 
 def play(scenario: dict) -> tuple[list, dict]:
     with tempfile.TemporaryDirectory() as directory:

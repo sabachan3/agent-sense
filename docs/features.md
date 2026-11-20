@@ -8,6 +8,7 @@ done. Here the list is a file with a command per feature, and the only way an it
 agent-sense features          # read the list and the local record of the last runs
 agent-sense features --run    # run the verify command of every active or passing feature
 agent-sense features --run --only login    # run one feature, whatever its state
+agent-sense features --run --include-manual   # also the features marked "manual": true
 ```
 
 ## The file
@@ -30,6 +31,7 @@ agent-sense features --run --only login    # run one feature, whatever its state
 | `behavior` | one sentence a person can check |
 | `verify` | a shell command run from the project root; exit code 0 proves the behavior. May be absent while the feature is not started or blocked |
 | `state` | `not_started`, `active`, `blocked` or `passing` |
+| `manual` | optional, `true` or `false`. `true` marks a feature whose verification is costly (a model, a GPU, minutes of browser time): a plain `--run` leaves it out and names it; `--only ID` and `--include-manual` run it. Reading treats it like any other feature |
 
 Other keys, at the top level or in a feature, are kept as they are. When a run changes a state,
 only that `state` value is replaced in the text of the file: escapes, the way numbers are spelled,
@@ -61,13 +63,14 @@ features still run and are recorded.
 
 | rule | severity | reported when |
 |---|---|---|
-| `features-invalid` | fail | the file is not JSON, has no `features` list, a version other than 1, an unknown state, a missing behavior, a bad or repeated id. Nothing is run and nothing else is checked |
+| `features-invalid` | fail | the file is not JSON, has no `features` list, a version other than 1, an unknown state, a missing behavior, a bad or repeated id, a `manual` value that is not true or false. Nothing is run and nothing else is checked |
 | `feature-failing` | fail | `--run`: a verify command exited non-zero. Reading: a feature is marked `passing` but the last recorded run of its current command failed |
 | `feature-failing` | warn | reading: a feature is `active` and its last recorded run failed (work in progress) |
 | `passing-unverified` | warn | a feature is `passing` but this machine has no passing run of exactly this verify command |
 | `no-verify` | warn | an `active` or `passing` feature has no verify command |
 | `wip-limit` | warn | more features are `active` than `wip` allows (default 1) |
 | `no-feature-list` | info | the project has no feature list |
+| `manual-not-run` | info | `--run`: features marked manual were left out; the finding names them, and `stats.manual_left_out` counts them |
 
 ## The record
 
@@ -115,10 +118,10 @@ default. To read the list (never run it) in either place, add `"features"` to `[
 
 ## Evidence
 
-`evals/features_eval.py`: 24 scenarios with known answers (hand-edited states, a weakened
+`evals/features_eval.py`: 27 scenarios with known answers (hand-edited states, a weakened
 command, a regression, a fresh clone, backlog items, invalid files and ids, a damaged record, a
 command that hangs, refused timeouts, a list or a record that cannot be written, a file with
-hand-written escapes), 24/24. All scenarios are
+hand-written escapes, features marked manual), 27/27. All scenarios are
 synthetic. The check has been used on four of the author's repositories since 2026-11-20 and
 has no field numbers yet.
 

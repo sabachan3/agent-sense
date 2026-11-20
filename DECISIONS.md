@@ -3,6 +3,21 @@
 Newest first. Each entry: what was decided, why, and what was rejected. Add an entry when a choice
 would otherwise be re-argued by the next session.
 
+## 2026-11-20: costly features are marked manual; the gate budget is what was measured
+
+- Decision: a feature may carry `"manual": true`. A plain `features --run` leaves it out, names
+  it in an info finding and counts it in `stats.manual_left_out`; `--only ID` and
+  `--include-manual` run it. Reading is unchanged, so a manual feature marked passing with no
+  local run is still `passing-unverified`.
+- Why: one list should hold every feature, but some verifications cost a model, a GPU or minutes
+  of browser time, and a run that takes minutes or money does not get run at the end of a session.
+- Rejected: leaving costly features out of the list (then nothing says they exist); a per-feature
+  timeout (it does not make a paid call free); skipping silently (a skipped check must be visible).
+- Decision: the gate budget is "median of three runs under 2.5 s by pytest's clock", stated once
+  in `CLAUDE.md`. Why: the earlier "under 2 s" was not met on a machine in normal use and made the
+  definition of done unreachable as written. Rejected: removing tests; a budget on wall clock
+  (it moves with machine load more than with the code).
+
 ## 2026-11-20: output is cleaned by what a character is, not by a list of known bad ones
 
 - **Decision.** `clean()` drops every character for which `str.isprintable()` is false; `json_text()`

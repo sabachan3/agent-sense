@@ -12,12 +12,12 @@ how much noise to expect there, not how often the problems occur in general.
 | deps | 21 | 15 projects, 19/19 planted findings, 0 unexpected | `evals/deps_eval.py` |
 | context | 19 | 11 projects, 14/14 planted, 0 unexpected; real history: 17 of 18 stale references | `evals/context_eval.py` |
 | boundary | 10 | 11 projects, 10/10 planted, 0 unexpected | `evals/boundary_eval.py` |
-| features | 59 | 24/24 scenarios | `evals/features_eval.py` |
+| features | 62 | 27/27 scenarios | `evals/features_eval.py` |
 | launch | 61 | 10/10 sites in Chromium | `evals/launch_eval.py` |
 | session | 108 | 18/18 synthetic sessions; pushback on 120 held-out sentences: precision 0.75, recall 0.60 | `evals/session_eval.py`, `evals/session_pushback_eval.py` |
 
-The whole gate (407 tests with the command-line and eval-script tests) runs in about 2.0 s by
-pytest's own clock, measured while other work was running on the machine (see `PROGRESS.md`). On every push CI runs
+The whole gate (410 tests with the command-line and eval-script tests) runs in about 1.9 s by
+pytest's own clock (median of eight runs), measured while other work was running on the machine (see `PROGRESS.md`). On every push CI runs
 the gate on Linux, macOS and Windows, the known-answer evals on Linux and macOS, the two browser
 evals in Chromium on Linux, and builds the wheel, installs it and checks this repository with it.
 

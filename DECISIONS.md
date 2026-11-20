@@ -20,6 +20,9 @@ would otherwise be re-argued by the next session.
 
 ## 2026-11-20: output is cleaned by what a character is, not by a list of known bad ones
 
+  Approved by the owner on 2026-11-20, as an exception for this repository to the general 2 s
+  rule. Rejected: moving the tests that start git or an interpreter out of the gate, which would
+  keep 2 s but shrink what every commit checks.
 - **Decision.** `clean()` drops every character for which `str.isprintable()` is false; `json_text()`
   writes every character of category Cc, Cf, Zl, Zp, Cs or Co as a `\u` escape. The Stop hook's
   answer is printed as ASCII-only JSON, and everything the hook does, including building and

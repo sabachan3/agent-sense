@@ -30,7 +30,7 @@ Local, deterministic checks for work done with coding agents, shipped as one com
 
 ```bash
 scripts/setup.sh                 # once: hooks, editable install on PATH, Chromium, then the gate
-scripts/test.sh                  # gate: all tests, under 2 s, also the pre-commit hook
+scripts/test.sh                  # gate: all tests, under 2 s by pytest's clock, also the pre-commit hook
 scripts/test.sh -k test_deps_lib # one check's tests
 uv run --quiet --no-project --python 3.12 evals/deps_eval.py                     # an eval (free)
 uv run --quiet --no-project --python 3.12 --with playwright evals/page_eval.py   # browser eval, about 90 s
@@ -47,7 +47,8 @@ only when asked.
 
 A change is done when all of these hold, in this order:
 
-1. `scripts/test.sh` is green and still under 2 s.
+1. `scripts/test.sh` is green and still under 2 s. The clock is the time pytest prints
+   (`N passed in X s`); the wall clock of the script adds about 0.2 s for `uv`.
 2. Every new or changed rule has a gate test and a case in that check's eval, in the same commit.
 3. `agent-sense done --run` passes, then `agent-sense all` shows no `fail`.
 4. `agent-sense features --run` passes for the features the change touches (all of them before a
@@ -79,8 +80,9 @@ not finished is written under In Progress with the next concrete step, not left 
 6. A new service is added in four places: `SERVICES` in `agent_sense/cli.py`, `force-include` in
    `pyproject.toml`, the README table, `docs/results.md`.
 7. Text from a checked project or page is passed through `clean()` before it reaches a terminal.
-8. Gate tests use no network, no browser and no sleep; commands in them must work in `sh` and
-   `cmd.exe` (CI runs the gate on Windows).
+8. Gate tests use no network and no browser, and wait only where a timeout is the thing under
+   test (under 1 s). Commands in them are built from `sys.executable`, so they mean the same in
+   `sh` and `cmd.exe` (CI runs the gate on Windows).
 9. Unicode escapes written through an agent's file tools can arrive as the literal character.
    After writing a `.py` file that contains `\u` escapes, grep for them and restore any that
    were replaced. Invisible and direction-control characters must stay escapes.

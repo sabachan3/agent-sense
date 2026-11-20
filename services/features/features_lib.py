@@ -12,8 +12,12 @@ See docs/features.md.
 
 from __future__ import annotations
 
+import functools
 import json
+import math
+import os
 import re
+import signal
 import subprocess
 import time
 from pathlib import Path
@@ -31,7 +35,7 @@ DEFAULT_TIMEOUT = 600
 RECORD = "agent-sense/features.json"
 OUTPUT_TAIL = 30
 VERSION = 1
-_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")   # used with fullmatch: `$` would accept a trailing newline
 
 
 def _finding(rule: str, message: str, fix: str, file: str, severity: str | None = None, detail: dict | None = None) -> dict:
@@ -41,6 +45,7 @@ def _finding(rule: str, message: str, fix: str, file: str, severity: str | None 
 
 # ---------------------------------------------------------------- the local record of runs
 
+@functools.lru_cache(maxsize=None)   # one git call per project and process, not one per read and write
 def record_path(root: Path) -> Path:
     """Inside the git directory, so the record is local and never committed; beside the project otherwise."""
     try:
@@ -53,29 +58,47 @@ def record_path(root: Path) -> Path:
     return root / ".agent-sense" / "features.json"
 
 
+def valid_run(entry) -> bool:
+    """A run this tool could have written. Anything else in the record is treated as no record."""
+    return (isinstance(entry, dict) and isinstance(entry.get("command"), str) and isinstance(entry.get("passed"), bool)
+            and isinstance(entry.get("exit"), int) and not isinstance(entry.get("exit"), bool)
+            and isinstance(entry.get("tail"), list) and all(isinstance(line, str) for line in entry["tail"]))
+
+
 def read_record(root: Path) -> dict:
+    """The recorded runs by feature id. A missing, unreadable or damaged record, or entry, counts as none."""
     try:
         data = json.loads(record_path(root).read_text(encoding="utf-8"))
-        runs = data.get("runs") if isinstance(data, dict) else None
-        return runs if isinstance(runs, dict) else {}
     except (OSError, ValueError):
         return {}
+    runs = data.get("runs") if isinstance(data, dict) else None
+    if not isinstance(runs, dict):
+        return {}
+    return {identity: entry for identity, entry in runs.items() if valid_run(entry)}
 
 
 def write_record(root: Path, runs: dict) -> None:
     path = record_path(root)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"version": VERSION, "runs": runs}), encoding="utf-8")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"version": VERSION, "runs": runs}), encoding="utf-8")
+    except OSError as error:
+        raise RuntimeError(f"cannot write the record of runs to {path}: {error}") from error
 
 
 # ---------------------------------------------------------------- reading and validating the list
+
+def read_text(path: Path) -> str:
+    """The file exactly as written: no newline translation, so a rewrite can leave the rest alone."""
+    return path.read_bytes().decode("utf-8")
+
 
 def load(path: Path, shown: str) -> tuple[dict | None, list[dict]]:
     """The parsed list and the reasons it cannot be used. Any reason means nothing else is checked."""
     fix = ('the file must look like {"version": 1, "features": [{"id": "login", "behavior": "one sentence", '
            '"verify": "command", "state": "not_started"}]}; states are ' + ", ".join(STATES))
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(read_text(path))
     except (OSError, ValueError) as error:
         return None, [_finding("features-invalid", f"{shown} cannot be read as JSON: {str(error)[:160]}", fix, shown)]
     if not isinstance(data, dict) or not isinstance(data.get("features"), list):
@@ -90,7 +113,7 @@ def load(path: Path, shown: str) -> tuple[dict | None, list[dict]]:
             continue
         identity = feature.get("id")
         label = f"`{identity}`" if isinstance(identity, str) and identity else f"entry {index + 1}"
-        if not isinstance(identity, str) or not _ID.match(identity):
+        if not isinstance(identity, str) or not _ID.fullmatch(identity):
             problems.append(f"{label} needs an id made of letters, digits, `-`, `_` or `.`")
         elif identity in seen:
             problems.append(f"the id `{identity}` is used more than once")
@@ -111,20 +134,123 @@ def command_of(feature: dict) -> str:
 
 # ---------------------------------------------------------------- running
 
+def _kill_tree(process: subprocess.Popen) -> None:
+    """Stop the command and everything it started; a shell that is killed alone leaves its children running."""
+    try:
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/T", "/F", "/PID", str(process.pid)], capture_output=True, timeout=30)
+        else:
+            os.killpg(process.pid, signal.SIGKILL)
+    except (OSError, subprocess.SubprocessError):
+        pass
+    try:
+        process.kill()
+    except OSError:
+        pass
+
+
+def execute(root: Path, command: str, timeout: float) -> tuple[int, str]:
+    """Exit code and combined output of a shell command. A timeout is exit 124 with the output so far."""
+    group = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" else {"start_new_session": True}
+    try:
+        process = subprocess.Popen(command, shell=True, cwd=root, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                   stderr=subprocess.STDOUT, **group)
+    except OSError as error:
+        return 127, f"could not start: {error}"
+    try:
+        output, _ = process.communicate(timeout=timeout)
+        return process.returncode, output.decode("utf-8", "replace")
+    except subprocess.TimeoutExpired:
+        _kill_tree(process)
+        try:
+            output, _ = process.communicate(timeout=10)
+        except subprocess.TimeoutExpired:   # something still holds the pipe; give up on the output, not on the verdict
+            output = b""
+        return 124, f"{(output or b'').decode('utf-8', 'replace')}\ntimed out after {timeout:g}s"
+    except BaseException:   # interrupted: the command is in its own group, so it would not see the Ctrl-C itself
+        _kill_tree(process)
+        raise
+
+
 def verify(root: Path, command: str, timeout: float) -> dict:
     started = time.time()
-    try:
-        done = subprocess.run(command, shell=True, cwd=root, capture_output=True, text=True, errors="replace",
-                              timeout=timeout)
-        code, output = done.returncode, done.stdout + done.stderr
-    except subprocess.TimeoutExpired as error:
-        partial = error.stdout if isinstance(error.stdout, str) else ""
-        code, output = 124, f"{partial}\ntimed out after {timeout:g}s"
+    code, output = execute(root, command, timeout)
     return {"command": command, "exit": code, "passed": code == 0, "at": int(started),
             "seconds": round(time.time() - started, 2), "tail": output.strip().splitlines()[-OUTPUT_TAIL:]}
 
 
-def run_features(root: Path, path: Path, shown: str, data: dict, only: list[str], timeout: float) -> tuple[list[dict], int]:
+# ---------------------------------------------------------------- rewriting the list
+
+_SPACE = " \t\r\n"
+
+
+def _skip(text: str, at: int) -> int:
+    while text[at] in _SPACE:
+        at += 1
+    return at
+
+
+def _string_end(text: str, at: int) -> int:
+    at += 1
+    while text[at] != '"':
+        at += 2 if text[at] == "\\" else 1
+    return at + 1
+
+
+def _value_end(text: str, at: int, path: tuple, spans: dict) -> int:
+    """Walk one JSON value starting at `at`, noting where the `state` value of each feature object sits."""
+    if text[at] == '"':
+        return _string_end(text, at)
+    if text[at] == "{":
+        at = _skip(text, at + 1)
+        while text[at] != "}":
+            end = _string_end(text, at)
+            key = json.loads(text[at:end])
+            at = _skip(text, end)
+            if text[at] != ":":
+                raise ValueError("expected a colon")
+            start = _skip(text, at + 1)
+            at = _value_end(text, start, path + (key,), spans)
+            if len(path) == 2 and path[0] == "features" and key == "state":
+                spans[path[1]] = (start, at)   # a repeated key: the last one wins, as in json.loads
+            at = _skip(text, at)
+            if text[at] == ",":
+                at = _skip(text, at + 1)
+        return at + 1
+    if text[at] == "[":
+        at, index = _skip(text, at + 1), 0
+        while text[at] != "]":
+            at = _skip(text, _value_end(text, at, path + (index,), spans))
+            if text[at] == ",":
+                at = _skip(text, at + 1)
+            index += 1
+        return at + 1
+    while at < len(text) and text[at] not in _SPACE + ",]}":
+        at += 1
+    return at
+
+
+def with_states(text: str, data: dict) -> str:
+    """`text` with only the changed `state` values replaced, so escapes, number spelling and layout
+    stay as written. When the edited text does not parse to exactly `data`, the whole list is written
+    out again instead: a file that is right matters more than a file that looks untouched."""
+    try:
+        spans: dict = {}
+        _value_end(text, _skip(text, 0), (), spans)
+        original = json.loads(text)
+        edits = [(spans[index], feature["state"]) for index, feature in enumerate(data["features"])
+                 if original["features"][index].get("state") != feature["state"]]
+        for (start, end), state in sorted(edits, reverse=True):
+            text = text[:start] + json.dumps(state) + text[end:]
+        if json.loads(text) == data:
+            return text
+    except (IndexError, KeyError, ValueError, TypeError, AttributeError):
+        pass
+    return json.dumps(data, ensure_ascii=False, indent=2) + "\n"
+
+
+def run_features(root: Path, path: Path, shown: str, data: dict, only: list[str], timeout: float,
+                 text: str) -> tuple[list[dict], int]:
     """Run the verify commands, record the outcomes, and move the states. Returns findings and the number run."""
     runs = read_record(root)
     findings, ran, changed = [], 0, False
@@ -148,10 +274,14 @@ def run_features(root: Path, path: Path, shown: str, data: dict, only: list[str]
                 detail={"id": identity, "exit": outcome["exit"], "was": before, "lines": outcome["tail"]}))
         if after != before:
             feature["state"], changed = after, True
+    # The list first: if it cannot be written, the record must not say more than the list shows.
+    if changed:
+        try:
+            path.write_bytes(with_states(text, data).encode("utf-8"))
+        except OSError as error:
+            raise RuntimeError(f"cannot write {shown}: {error}; no state was changed and no run was recorded") from error
     if ran:
         write_record(root, runs)
-    if changed:
-        path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return findings, ran
 
 
@@ -162,7 +292,7 @@ def record_findings(root: Path, shown: str, data: dict) -> list[dict]:
     findings = []
     for feature in data["features"]:
         identity, command, state = feature["id"], command_of(feature), feature["state"]
-        last = runs.get(identity) if isinstance(runs.get(identity), dict) else None
+        last = runs.get(identity)
         if state not in RUN_STATES or not command:
             continue
         current = bool(last) and last.get("command") == command
@@ -207,6 +337,19 @@ def stats_of(data: dict, ran: int) -> dict:
             "verified_completion_rate": round(counts["passing"] / started, 4) if started else None}
 
 
+def timeout_of(given, configured) -> float:
+    """Seconds one verify command may take. Unset means the default; zero, negative or not a number is an error,
+    because a limit that is silently ignored lets a hanging command pass for a slow one."""
+    for value, source in ((given, "--timeout"), (configured, "`timeout` in the config")):
+        if value is None:
+            continue
+        number = isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+        if not number or value <= 0:
+            raise RuntimeError(f"{source} must be a number of seconds above 0, got {value!r}")
+        return float(value)
+    return float(DEFAULT_TIMEOUT)
+
+
 def add_arguments(parser) -> None:
     parser.add_argument("--run", action="store_true",
                         help="run the verify command of every active or passing feature and update the states")
@@ -245,10 +388,14 @@ def run(args) -> dict:
         raise RuntimeError(f"{', '.join(missing)} has no verify command to run")
     wip = config.get("wip", DEFAULT_WIP)
     wip = wip if isinstance(wip, int) and not isinstance(wip, bool) and wip >= 0 else DEFAULT_WIP
-    timeout = getattr(args, "timeout", None) or config.get("timeout") or DEFAULT_TIMEOUT
     ran = 0
     if running:
-        findings, ran = run_features(root, path, shown, data, only, float(timeout))
+        timeout = timeout_of(getattr(args, "timeout", None), config.get("timeout"))
+        try:
+            text = read_text(path)
+        except (OSError, ValueError) as error:
+            raise RuntimeError(f"cannot read {shown}: {error}") from error
+        findings, ran = run_features(root, path, shown, data, only, timeout, text)
         if only:   # the features not run still answer for their own record
             others = {"features": [feature for feature in data["features"] if feature["id"] not in only]}
             findings += record_findings(root, shown, others)

@@ -3,6 +3,19 @@
 Newest first. Each entry: what was decided, why, and what was rejected. Add an entry when a choice
 would otherwise be re-argued by the next session.
 
+## 2026-11-20: a features run edits the state in place and owns its process tree
+
+- **Decision.** `features --run` replaces only the changed `state` values in the text of
+  `features.json`, checks that the result parses to the intended data, and re-dumps the whole list
+  only if it does not. The list is written before the local record. Each verify command runs in
+  its own process group (process tree on Windows) and is stopped whole at the timeout; a timeout
+  of zero or below is an error.
+- **Reason.** Found by the first evaluator run: a re-dump rewrote escapes and number spellings
+  the author chose, the record could say "passed" while the list still said `active`, a timed-out
+  shell left its children running, and `--timeout 0` silently meant "no limit asked for".
+- **Rejected.** A JSON library that keeps formatting (a runtime dependency for one field);
+  killing only the shell (leaves the real command running).
+
 ## 2026-11-20: `passing` is written only by `features --run`
 - **Decision.** The feature list is `features.json`; a state becomes `passing` only when the
   feature's verify command exits 0, and a failing run takes it back to `active`.

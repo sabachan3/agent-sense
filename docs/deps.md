@@ -32,8 +32,10 @@ looked up on a package index.
   without a block of their own in the same service (`services/<name>/` and below) or, outside a
   services layout, under the same top-level directory: a helper that entry scripts import runs in
   their environment. It does not reach another service, another top-level directory, or files at
-  the project root, and a file with its own block answers only for itself. The cost: a helper
-  imported by a sibling script that does not declare the package is not reported.
+  the project root, and a file with its own block answers only for itself. Two costs: a helper
+  imported by a sibling script that does not declare the package is not reported; and outside
+  `services/` the group is the whole top-level directory, so in a layout like `apps/a` and
+  `apps/b` a block in one app covers block-less modules in the other.
 - `uv run --with X` and `pip install X` in shell scripts, Makefiles, Dockerfiles, git hooks and CI
   workflows declare `X` for the whole project. This is how projects without a `pyproject.toml`
   say what their tests need. It is coarse: the package counts as declared for every file.
@@ -69,10 +71,11 @@ looked up on a package index.
 
 ## Results
 
-Known-answer eval (`evals/deps_eval.py`): 14 small projects, 17 planted problems, all found, no
+Known-answer eval (`evals/deps_eval.py`): 15 small projects, 19 planted problems, all found, no
 other finding. Field run on eight real projects (Python: 368, 47, 169, 187, 35 and 10 imports;
-JS/TS: 380, 106, 715 and 9 imports): 2 findings, both judged true by reading the code (a package
-imported inside a function that nothing declares). An earlier version also reported `pydantic`
+JS/TS: 380, 106, 715 and 9 imports): 2 findings, first judged true and then found to be false: the
+package was declared in the inline script block of the entry scripts that import the helper.
+That led to the sibling rule above; with it the same projects give 0 findings. An earlier version also reported `pydantic`
 in a FastAPI project that lists only `fastapi`; that is the reason for the comes-with table.
 
 ## Limits

@@ -193,11 +193,16 @@ def hook_stop(stdin_text: str) -> int:
         if not (root / CONFIG_FILE).is_file():
             return 0
         config = read_config(root)
-        reports = [run_service(name, default_args(name), root, config)
-                   for name in config.get("hook", {}).get("checks", HOOK_DEFAULT) if load(name)]
+        names = [name for name in config.get("hook", {}).get("checks", HOOK_DEFAULT) if load(name)]
     except Exception as error:  # noqa: BLE001
-        print(f"agent-sense hook: skipped ({type(error).__name__}: {str(error)[:200]})", file=sys.stderr)
+        print(f"agent-sense hook: skipped ({type(error).__name__}: {clean(error, 200)})", file=sys.stderr)
         return 0
+    reports = []
+    for name in names:   # one check that cannot run must not switch the others off
+        try:
+            reports.append(run_service(name, default_args(name), root, config))
+        except Exception as error:  # noqa: BLE001
+            print(f"agent-sense hook: {name} skipped ({type(error).__name__}: {clean(error, 200)})", file=sys.stderr)
     failing = [dict(report, findings=[f for f in report["findings"] if f["severity"] == "fail"]) for report in reports]
     failing = [report for report in failing if report["findings"]]
     if not failing:

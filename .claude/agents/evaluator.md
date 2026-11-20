@@ -19,7 +19,8 @@ directory outside the repository.
 2. Read the diff of the range you were given: `git diff --stat RANGE`, then the full diff. For
    uncommitted work also `git status --short`. List the services and rules it touches.
 3. Run the gate yourself: `scripts/test.sh`. Record the count and the time. FAIL if it is red or
-   takes 2 s or more.
+   takes 2 s or more by the time pytest prints (`N passed in X s`); run it three times and use the
+   median, and report the wall clock separately.
 4. For each touched service run its eval yourself
    (`uv run --quiet --no-project --python 3.12 evals/<name>_eval.py`; add `--with playwright`
    for page and launch, `--skip-field` for session). FAIL if any is below its threshold.

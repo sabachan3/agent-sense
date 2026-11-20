@@ -1,8 +1,8 @@
 # Results
 
-All numbers below were produced on one macOS machine on 2026-11-19 with the scripts named. Every
-check has known-answer cases (threshold: all must pass) and a run on real material whose findings
-were read by hand. The real samples are small and come from one person's projects, so they show
+All numbers below were produced on one macOS machine on 2026-11-19 and 2026-11-20 with the scripts
+named. Every check has known-answer cases (threshold: all must pass). Every check except
+`features` also has a run on real material whose findings were read by hand. The real samples are small and come from one person's projects, so they show
 how much noise to expect there, not how often the problems occur in general.
 
 | check | gate tests | known-answer eval | script |
@@ -12,11 +12,12 @@ how much noise to expect there, not how often the problems occur in general.
 | deps | 21 | 15 projects, 19/19 planted findings, 0 unexpected | `evals/deps_eval.py` |
 | context | 19 | 11 projects, 14/14 planted, 0 unexpected; real history: 17 of 18 stale references | `evals/context_eval.py` |
 | boundary | 10 | 11 projects, 10/10 planted, 0 unexpected | `evals/boundary_eval.py` |
-| features | 21 | 15/15 scenarios | `evals/features_eval.py` |
+| features | 40 | 18/18 scenarios | `evals/features_eval.py` |
 | launch | 61 | 10/10 sites in Chromium | `evals/launch_eval.py` |
 | session | 108 | 18/18 synthetic sessions; pushback on 120 held-out sentences: precision 0.75, recall 0.60 | `evals/session_eval.py`, `evals/session_pushback_eval.py` |
 
-The whole gate (361 tests with the command-line and eval-script tests) runs in about 1.7 s. On every push CI runs
+The whole gate (381 tests with the command-line and eval-script tests) runs in 1.8 to 1.9 s by
+pytest's own clock, measured while other work was running on the machine (see `PROGRESS.md`). On every push CI runs
 the gate on Linux, macOS and Windows, the known-answer evals on Linux and macOS, the two browser
 evals in Chromium on Linux, and builds the wheel, installs it and checks this repository with it.
 
@@ -71,9 +72,13 @@ Lock-file checks were exercised on small synthetic lock files only.
 
 ## features
 
-Added 2026-11-20. 15 synthetic scenarios, all matching: a state edited to `passing` by hand, a
+Added 2026-11-20. 18 synthetic scenarios, all matching: a state edited to `passing` by hand, a
 verify command weakened after it passed, a regression, a fresh clone, backlog and blocked items,
-invalid files. No field numbers yet; `scripts/e2e.sh` runs it through the installed wheel.
+invalid files, a damaged record, a command that hangs, a file with hand-written escapes. An
+independent review on the day it was added found seven defects (a traceback on a bad timeout, a
+timeout of 0 ignored, a crash on a damaged record, an id with a trailing newline accepted, a
+record ahead of an unwritable list, children left running after a timeout, escapes rewritten);
+all seven are fixed and each has a gate test. No field numbers yet; `scripts/e2e.sh` runs it through the installed wheel.
 
 ## launch
 

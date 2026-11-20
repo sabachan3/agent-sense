@@ -26,12 +26,16 @@ agent-sense features --run --only login    # run one feature, whatever its state
 
 | field | meaning |
 |---|---|
-| `id` | letters, digits, `-`, `_`, `.`; unique in the file |
+| `id` | letters, digits, `-`, `_`, `.`, nothing else (no spaces or line breaks); unique in the file |
 | `behavior` | one sentence a person can check |
 | `verify` | a shell command run from the project root; exit code 0 proves the behavior. May be absent while the feature is not started or blocked |
 | `state` | `not_started`, `active`, `blocked` or `passing` |
 
-Other keys, at the top level or in a feature, are kept as they are.
+Other keys, at the top level or in a feature, are kept as they are. When a run changes a state,
+only that `state` value is replaced in the text of the file: escapes, the way numbers are spelled,
+indentation and line endings stay as written. The edited text is parsed and compared with the
+intended result before it is saved; only if they differ (which no known input causes) is the whole
+list written out again with two-space indentation.
 
 ## States
 
@@ -44,7 +48,8 @@ A person or an agent writes `not_started`, `active` and `blocked`. `passing` is 
 | `not_started`, `blocked` (only with `--only`) | `passing` | unchanged, `feature-failing` |
 
 `--run` without `--only` never runs `not_started` or `blocked` features, and skips features with
-no command. The file is rewritten only when a state changed (key order kept, two-space indent).
+no command. The file is written only when a state changed, and before the record: if the file
+cannot be written the run ends with an error (exit 2) and nothing is recorded.
 
 ## Rules
 
@@ -61,10 +66,11 @@ no command. The file is rewritten only when a state changed (key order kept, two
 ## The record
 
 Each run stores, per feature, the command, exit code, time, duration and the last 30 lines of
-output in `.git/agent-sense/features.json` (in `.agent-sense/features.json` beside the project when
+output (standard output and error together, in the order written) in `.git/agent-sense/features.json` (in `.agent-sense/features.json` beside the project when
 it is not a git repository). The record is local and never committed. So a fresh clone reports
 every `passing` feature as `passing-unverified` until `--run` is run there: the state in the
-file is a claim, the record is the proof, and the proof does not travel.
+file is a claim, the record is the proof, and the proof does not travel. A record entry that is
+not in the shape this tool writes (edited or damaged) counts as no record for that feature.
 
 Stats in the report: the count per state, `ran`, and `verified_completion_rate` = passing /
 features that are not `not_started`.
@@ -75,12 +81,21 @@ features that are not `not_started`.
 [features]
 file = "features.json"
 wip = 1
-timeout = 600                       # seconds per verify command
+timeout = 600                       # seconds per verify command; must be above 0
 severity = { "wip-limit" = "off", "passing-unverified" = "fail" }
 
 [done]
 ignore = ["features.json"]          # a state change must not make the test record stale
 ```
+
+That `ignore` line has a cost: an edit to `features.json` by hand does not make the test record
+stale either, so `done` says nothing about it. This check is what notices such an edit
+(`passing-unverified`, `feature-failing`), which is a reason to list `features` under `[all] checks`.
+
+A verify command gets `--timeout` seconds (or `timeout` from the config). Zero, a negative number
+or text is an error, not "no limit". At the limit the command and every process it started are
+stopped (the process group on macOS and Linux, the process tree on Windows), the run counts as
+exit 124, and the output up to that point is kept. The command's standard input is empty.
 
 `features` is not in the default set of `agent-sense all` and the Stop hook does not run it by
 default. To read the list (never run it) in either place, add `"features"` to `[all] checks` or
@@ -88,8 +103,9 @@ default. To read the list (never run it) in either place, add `"features"` to `[
 
 ## Evidence
 
-`evals/features_eval.py`: 15 scenarios with known answers (hand-edited states, a weakened
-command, a regression, a fresh clone, backlog items, invalid files), 15/15. All scenarios are
+`evals/features_eval.py`: 18 scenarios with known answers (hand-edited states, a weakened
+command, a regression, a fresh clone, backlog items, invalid files, a damaged record, a command
+that hangs, a file with hand-written escapes), 18/18. All scenarios are
 synthetic. The check has been used on four of the author's repositories since 2026-11-20 and
 has no field numbers yet.
 

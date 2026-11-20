@@ -29,6 +29,11 @@ PASS_RATE = 1.0
 ADD = "grep -q 'def add' calc.py"
 SUB = "grep -q 'def sub' calc.py"
 CODE = "def add(a, b):\n    return a + b\n"
+HANG = "sleep 30"
+BACKSLASH = chr(92)
+# A list as a person might have written it: compact, with escapes and number spellings json.dumps would change.
+RAW = ('{"owner": "team", "features": [{"id": "add", "behavior": "adds ' + BACKSLASH + 'u65e5' + BACKSLASH + 'u200b", '
+       '"weight": 1e3, "price": 2.50,\n    "state":   "active", "verify": "' + ADD + '"}], "version": 1}')
 
 
 def entry(identity: str, state: str, verify: str | None = None) -> dict:
@@ -110,12 +115,29 @@ SCENARIOS = [
 ]
 
 
+EXTRA = [
+    {"name": "the local record is damaged: it counts as no record, the check does not crash",
+     "start": [entry("add", "active", ADD)], "steps": [("run", {}), ("damage", "add"), ("read", {})],
+     "expect": [("passing-unverified", "warn", "add")], "states": {"add": "passing"}},
+    {"name": "a verify command that hangs is stopped at the timeout and the feature is taken back",
+     "start": [entry("add", "passing", HANG)], "steps": [("run", {"timeout": 0.5})],
+     "expect": [("feature-failing", "fail", "add")], "states": {"add": "active"}},
+    {"name": "a run changes the state and leaves the rest of the file as it was written",
+     "raw": RAW, "steps": [("run", {})],
+     "expect": [], "states": {"add": "passing"}, "text": RAW.replace('"state":   "active"', '"state":   "passing"')},
+]
+SCENARIOS += EXTRA
+
+
 def play(scenario: dict) -> tuple[list, dict]:
     with tempfile.TemporaryDirectory() as directory:
         repo = Path(directory)
         subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True, capture_output=True)
         (repo / "calc.py").write_text(CODE, encoding="utf-8")
-        write(repo, scenario["start"])
+        if "raw" in scenario:
+            (repo / "features.json").write_bytes(scenario["raw"].encode("utf-8"))
+        else:
+            write(repo, scenario["start"])
         result = {"findings": []}
         for kind, value in scenario["steps"]:
             if kind == "run":
@@ -128,10 +150,16 @@ def play(scenario: dict) -> tuple[list, dict]:
                 (repo / "calc.py").write_text(value, encoding="utf-8")
             elif kind == "forget":
                 LIB.record_path(repo).unlink()
+            elif kind == "damage":
+                record = json.loads(LIB.record_path(repo).read_text(encoding="utf-8"))
+                record["runs"][value]["tail"] = None
+                LIB.record_path(repo).write_text(json.dumps(record), encoding="utf-8")
         found = sorted(((finding["rule"], finding["severity"], finding.get("detail", {}).get("id"))
                         for finding in result["findings"]), key=str)
-        states = {item["id"]: item["state"]
-                  for item in json.loads((repo / "features.json").read_text(encoding="utf-8"))["features"]}
+        written = (repo / "features.json").read_bytes().decode("utf-8")
+        states = {item["id"]: item["state"] for item in json.loads(written)["features"]}
+        if "text" in scenario and written != scenario["text"]:
+            states["(file text)"] = "differs from the expected text"
         return found, states
 
 

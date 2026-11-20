@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # End to end: build the wheel, install it into a throwaway environment, and drive the installed
-# command through a throwaway git repository. Not part of the gate (about 10 s, needs uv's cache
+# command through a throwaway git repository. Not part of the gate (about 3 s with a warm uv cache, longer on a cold one; needs uv's cache
 # or the network for the build backend). Exits non-zero at the first mismatch.
 set -euo pipefail
 REPO="$(git rev-parse --show-toplevel)"

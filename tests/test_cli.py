@@ -1,8 +1,14 @@
 import json
 import subprocess
+import sys
 
 import pytest
 from agent_sense import cli
+
+# Built from the running interpreter so the commands mean the same under sh and under cmd.exe.
+TRUE = f'"{sys.executable}" -c "pass"'
+X_IS_ONE = f'"{sys.executable}" -c "import sys; sys.exit(0 if open(\'app.py\').read().split() == [\'x\', \'=\', \'1\'] else 1)"'
+DONE_CONFIG = f"[done]\ntest = '{TRUE}'\nignore = [\".agent-sense.toml\"]\n"   # TOML literal string: no escapes
 
 
 def test_every_service_follows_the_contract():
@@ -62,7 +68,7 @@ def repo(template, tmp_path):
 
 
 def test_done_command_end_to_end(repo, capsys):
-    (repo / ".agent-sense.toml").write_text('[done]\ntest = "true"\nignore = [".agent-sense.toml"]\n')
+    (repo / ".agent-sense.toml").write_text(DONE_CONFIG)
     assert cli.main(["done", "--root", str(repo), "--no-state"]) == 1
     assert "tests-not-run" in capsys.readouterr().out
     assert cli.main(["done", "--root", str(repo), "--no-state", "--run", "--format", "json"]) == 0
@@ -85,7 +91,7 @@ def test_bad_config_and_non_repo_exit_2(repo, tmp_path, capsys):
 def test_hook_blocks_only_on_failure_and_only_with_config(repo, capsys):
     event = json.dumps({"cwd": str(repo), "hook_event_name": "Stop", "stop_hook_active": False})
     assert cli.hook_stop(event) == 0 and capsys.readouterr().out == ""        # no config: not our project
-    (repo / ".agent-sense.toml").write_text('[done]\ntest = "true"\nignore = [".agent-sense.toml"]\n')
+    (repo / ".agent-sense.toml").write_text(DONE_CONFIG)
     assert cli.hook_stop(event) == 0
     decision = json.loads(capsys.readouterr().out)
     assert decision["decision"] == "block" and "tests-not-run" in decision["reason"]
@@ -116,7 +122,7 @@ def test_all_rejects_unknown_check(repo, capsys):
 
 
 def test_features_command_runs_only_with_run_and_reads_in_all(repo, capsys):
-    listing = {"version": 1, "features": [{"id": "app", "behavior": "x is set", "verify": 'grep -q "x = 1" app.py',
+    listing = {"version": 1, "features": [{"id": "app", "behavior": "x is set", "verify": X_IS_ONE,
                                            "state": "active"}]}
     (repo / "features.json").write_text(json.dumps(listing))
     assert cli.main(["features", "--root", str(repo), "--format", "json"]) == 0
@@ -130,3 +136,18 @@ def test_features_command_runs_only_with_run_and_reads_in_all(repo, capsys):
     assert "was passing, now fails" in capsys.readouterr().out
     assert json.loads((repo / "features.json").read_text())["features"][0]["state"] == "active"
     assert cli.main(["features", "--root", str(repo), "--run", "--only", "nope"]) == 2
+
+
+def test_hook_check_that_cannot_run_does_not_switch_the_others_off(repo, capsys, monkeypatch):
+    (repo / ".agent-sense.toml").write_text(DONE_CONFIG + '[hook]\nchecks = ["features", "done"]\n')
+    (repo / "features.json").write_text('{"features": []}')
+
+    def broken(args):
+        raise TypeError("damaged state")
+
+    monkeypatch.setattr(cli.load("features"), "run", broken)
+    event = json.dumps({"cwd": str(repo), "stop_hook_active": False})
+    assert cli.hook_stop(event) == 0
+    captured = capsys.readouterr()
+    assert "features skipped (TypeError" in captured.err
+    assert json.loads(captured.out)["decision"] == "block" and "tests-not-run" in captured.out   # done still ran

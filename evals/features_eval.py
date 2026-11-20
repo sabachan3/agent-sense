@@ -128,6 +128,32 @@ EXTRA = [
 ]
 SCENARIOS += EXTRA
 
+ERROR = ("error", "exit 2", None)   # the check refused to run: RuntimeError, which the command turns into exit 2
+# Found by the second independent review. `lock` makes the list or the record unwritable, as a
+# read-only checkout or a full disk would.
+SECOND = [
+    {"name": "an id that ends in a newline is not an id",
+     "start": [entry("add" + chr(10), "active", ADD)], "steps": [("run", {})],
+     "expect": [("features-invalid", "fail", None)], "states": {"add" + chr(10): "active"}},
+    {"name": "an id with dots, dashes and underscores is a normal id",
+     "start": [entry("add.v2_x-1", "active", ADD)], "steps": [("run", {})],
+     "expect": [], "states": {"add.v2_x-1": "passing"}},
+    {"name": "a timeout of zero is refused and nothing is run",
+     "start": [entry("add", "active", ADD)], "steps": [("run", {"timeout": 0})],
+     "expect": [ERROR], "states": {"add": "active"}},
+    {"name": "a timeout longer than a day is refused and nothing is run",
+     "start": [entry("add", "active", ADD)], "steps": [("run", {"timeout": 1e10})],
+     "expect": [ERROR], "states": {"add": "active"}},
+    {"name": "the list cannot be written: no state changes and no run is recorded",
+     "start": [entry("add", "active", ADD)], "steps": [("lock", "list"), ("run", {}), ("unlock", "list"), ("read", {})],
+     "expect": [], "states": {"add": "active"}, "errors": 1},
+    {"name": "the record cannot be written: the list is put back, so it does not claim what the record denies",
+     "start": [entry("made", "active", "test -f made.txt")],
+     "steps": [("run", {}), ("touch", "made.txt"), ("lock", "record"), ("run", {}), ("unlock", "record"), ("read", {})],
+     "expect": [("feature-failing", "warn", "made")], "states": {"made": "active"}, "errors": 1},
+]
+SCENARIOS += SECOND
+
 
 def play(scenario: dict) -> tuple[list, dict]:
     with tempfile.TemporaryDirectory() as directory:
@@ -138,10 +164,22 @@ def play(scenario: dict) -> tuple[list, dict]:
             (repo / "features.json").write_bytes(scenario["raw"].encode("utf-8"))
         else:
             write(repo, scenario["start"])
-        result = {"findings": []}
+        result, errors = {"findings": []}, 0
+        locked = {"list": repo / "features.json", "record": LIB.record_path(repo).parent}
         for kind, value in scenario["steps"]:
             if kind == "run":
-                result = check(repo, scenario.get("config"), run=True, **value)
+                try:
+                    result = check(repo, scenario.get("config"), run=True, **value)
+                except RuntimeError:
+                    result, errors = {"findings": [{"rule": "error", "severity": "exit 2"}]}, errors + 1
+            elif kind in ("lock", "unlock"):   # the record: its file and its directory, so neither edit nor create works
+                paths = [locked[value]] + ([LIB.record_path(repo)] if value == "record" else [])
+                for path in paths:
+                    if path.exists():
+                        path.chmod((0o555 if kind == "lock" else 0o755) if path.is_dir() else
+                                   (0o444 if kind == "lock" else 0o644))
+            elif kind == "touch":
+                (repo / value).write_text("", encoding="utf-8")
             elif kind == "read":
                 result = check(repo, scenario.get("config"))
             elif kind == "edit":
@@ -160,6 +198,8 @@ def play(scenario: dict) -> tuple[list, dict]:
         states = {item["id"]: item["state"] for item in json.loads(written)["features"]}
         if "text" in scenario and written != scenario["text"]:
             states["(file text)"] = "differs from the expected text"
+        if errors != scenario.get("errors", 1 if ERROR in scenario["expect"] else 0):
+            states["(refusals)"] = f"{errors} runs were refused"
         return found, states
 
 

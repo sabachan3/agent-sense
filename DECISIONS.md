@@ -3,6 +3,30 @@
 Newest first. Each entry: what was decided, why, and what was rejected. Add an entry when a choice
 would otherwise be re-argued by the next session.
 
+## 2026-11-20: output is cleaned by what a character is, not by a list of known bad ones
+
+- **Decision.** `clean()` drops every character for which `str.isprintable()` is false; `json_text()`
+  writes every character of category Cc, Cf, Zl, Zp, Cs or Co as a `\u` escape. The Stop hook's
+  answer is printed as ASCII-only JSON, and everything the hook does, including building and
+  printing that answer, is guarded.
+- **Reason.** Found by the second evaluator run: the list of ranges missed lone surrogates, which
+  cannot be encoded at all, so one in a record crashed the report and made the hook raise. It also
+  missed direction marks and zero-width characters.
+- **Rejected.** Adding the surrogate range to the list (the next missed character is the same bug);
+  `ensure_ascii=True` for all JSON (makes Japanese text in reports unreadable).
+
+## 2026-11-20: a features run never leaves the list and the record disagreeing, and never leaves a command behind
+
+- **Decision.** The list is written first; if the record then cannot be written, the list is put
+  back byte for byte. While a verify command runs, SIGHUP and SIGTERM stop its process group and
+  then end the tool the way the signal asked. Timeouts above one day are refused. A command that
+  cannot be started fails its own feature (exit 127) and the rest still run.
+- **Reason.** Found by the second evaluator run: a read-only record left `passing` over a failed
+  record, reported as a lie on the next read; a command in its own process group outlived a hangup
+  of the tool; `--timeout 1e10` overflowed the OS timer.
+- **Rejected.** Writing the record first (the first review showed the opposite disagreement);
+  running commands in the tool's own group (a timeout could then not stop their children).
+
 ## 2026-11-20: a features run edits the state in place and owns its process tree
 
 - **Decision.** `features --run` replaces only the changed `state` values in the text of

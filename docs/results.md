@@ -12,11 +12,11 @@ how much noise to expect there, not how often the problems occur in general.
 | deps | 21 | 15 projects, 19/19 planted findings, 0 unexpected | `evals/deps_eval.py` |
 | context | 19 | 11 projects, 14/14 planted, 0 unexpected; real history: 17 of 18 stale references | `evals/context_eval.py` |
 | boundary | 10 | 11 projects, 10/10 planted, 0 unexpected | `evals/boundary_eval.py` |
-| features | 40 | 18/18 scenarios | `evals/features_eval.py` |
+| features | 58 | 24/24 scenarios | `evals/features_eval.py` |
 | launch | 61 | 10/10 sites in Chromium | `evals/launch_eval.py` |
 | session | 108 | 18/18 synthetic sessions; pushback on 120 held-out sentences: precision 0.75, recall 0.60 | `evals/session_eval.py`, `evals/session_pushback_eval.py` |
 
-The whole gate (381 tests with the command-line and eval-script tests) runs in 1.8 to 1.9 s by
+The whole gate (406 tests with the command-line and eval-script tests) runs in about 2.0 s by
 pytest's own clock, measured while other work was running on the machine (see `PROGRESS.md`). On every push CI runs
 the gate on Linux, macOS and Windows, the known-answer evals on Linux and macOS, the two browser
 evals in Chromium on Linux, and builds the wheel, installs it and checks this repository with it.
@@ -72,13 +72,18 @@ Lock-file checks were exercised on small synthetic lock files only.
 
 ## features
 
-Added 2026-11-20. 18 synthetic scenarios, all matching: a state edited to `passing` by hand, a
+Added 2026-11-20. 24 synthetic scenarios, all matching: a state edited to `passing` by hand, a
 verify command weakened after it passed, a regression, a fresh clone, backlog and blocked items,
 invalid files, a damaged record, a command that hangs, a file with hand-written escapes. An
 independent review on the day it was added found seven defects (a traceback on a bad timeout, a
 timeout of 0 ignored, a crash on a damaged record, an id with a trailing newline accepted, a
 record ahead of an unwritable list, children left running after a timeout, escapes rewritten);
-all seven are fixed and each has a gate test. No field numbers yet; `scripts/e2e.sh` runs it through the installed wheel.
+a second review the same day found that two of those fixes were incomplete (a timeout too large
+for the OS timer still gave a traceback; a record holding a lone surrogate still crashed the report
+and made the Stop hook raise) and found five more defects: a command that cannot be started, a list
+nested too deeply to rewrite, a hangup leaving the command running, a record that cannot be written
+after the list was, and a bad config timeout unnoticed on a plain read. All are fixed with a gate
+test each; which of those tests fail on the earlier code is recorded in `PROGRESS.md`. No field numbers yet; `scripts/e2e.sh` runs it through the installed wheel.
 
 ## launch
 

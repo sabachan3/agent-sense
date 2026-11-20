@@ -21,10 +21,10 @@ from __future__ import annotations
 import argparse
 import importlib
 import json
-import re
 import subprocess
 import sys
 import tomllib
+import unicodedata
 from pathlib import Path
 
 PACKAGE = Path(__file__).resolve().parent
@@ -41,13 +41,35 @@ from contracts import schema  # noqa: E402
 CONFIG_FILE = ".agent-sense.toml"
 ALL_DEFAULT = ("done", "deps", "context", "boundary")
 HOOK_DEFAULT = ("done",)
-_CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f\u2028\u2029\u202a-\u202e\u2066-\u2069]")
 HOOK_SETTINGS = {"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "agent-sense hook stop", "timeout": 60}]}]}}
 
 
 def clean(text: object, limit: int = 400) -> str:
-    """Text from a checked project or page made safe for a terminal."""
-    return _CONTROL.sub("", str(text).replace("\n", " ").replace("\t", " "))[:limit]
+    """Text from a checked project or page made safe for a terminal: one line, and nothing invisible.
+
+    Every character Python does not call printable is dropped: controls, direction marks and
+    overrides, zero-width characters, tags, line separators, and lone surrogates (which cannot
+    even be encoded for output). The plain space stays."""
+    return "".join(char for char in str(text).replace("\n", " ").replace("\t", " ") if char.isprintable())[:limit]
+
+
+# The same set, for JSON: there the characters are data and must survive, so they are written as escapes.
+_JSON_UNSAFE_CATEGORIES = {"Cc", "Cf", "Zl", "Zp", "Cs", "Co"}
+
+
+def _json_escape(char: str) -> str:
+    code = ord(char)
+    if code > 0xFFFF:   # JSON escapes are UTF-16: characters outside the BMP take a surrogate pair
+        code -= 0x10000
+        return f"\\u{0xD800 + (code >> 10):04x}\\u{0xDC00 + (code & 0x3FF):04x}"
+    return f"\\u{code:04x}"
+
+
+def json_text(payload) -> str:
+    """The report as JSON that is safe to print or store: same data, invisible characters as escapes."""
+    text = json.dumps(payload, ensure_ascii=False, indent=2)
+    return "".join(_json_escape(char) if char != "\n" and unicodedata.category(char) in _JSON_UNSAFE_CATEGORIES else char
+                   for char in text)
 
 
 def load(name: str):
@@ -143,8 +165,8 @@ def format_text(reports: list[dict]) -> str:
 def emit(reports: list[dict], args: argparse.Namespace) -> int:
     payload = reports[0] if len(reports) == 1 else {"version": schema.REPORT_VERSION, "reports": reports}
     if args.out:
-        Path(args.out).write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps(payload, ensure_ascii=False, indent=2) if args.format == "json" else format_text(reports))
+        Path(args.out).write_text(json_text(payload) + "\n", encoding="utf-8")
+    print(json_text(payload) if args.format == "json" else format_text(reports))
     return max(schema.exit_code(report, args.fail_on) for report in reports)
 
 
@@ -203,21 +225,27 @@ def hook_stop(stdin_text: str) -> int:
             reports.append(run_service(name, default_args(name), root, config))
         except Exception as error:  # noqa: BLE001
             print(f"agent-sense hook: {name} skipped ({type(error).__name__}: {clean(error, 200)})", file=sys.stderr)
-    failing = [dict(report, findings=[f for f in report["findings"] if f["severity"] == "fail"]) for report in reports]
-    failing = [report for report in failing if report["findings"]]
-    if not failing:
-        return 0
-    reason = ("agent-sense: this cannot be reported as done yet.\n" + format_text(failing) +
-              "\nResolve each finding, or if one is wrong tell the user which one and why. "
-              "Do not edit tests, the config or the hook to make it pass.")
-    print(json.dumps({"decision": "block", "reason": reason}, ensure_ascii=False))
+    try:   # building and printing the answer is guarded too: whatever a record or a config holds, never raise
+        failing = [dict(report, findings=[f for f in report["findings"] if f["severity"] == "fail"]) for report in reports]
+        failing = [report for report in failing if report["findings"]]
+        if not failing:
+            return 0
+        reason = ("agent-sense: this cannot be reported as done yet.\n" + format_text(failing) +
+                  "\nResolve each finding, or if one is wrong tell the user which one and why. "
+                  "Do not edit tests, the config or the hook to make it pass.")
+        print(json.dumps({"decision": "block", "reason": reason}))   # ASCII only: nothing here can fail to encode
+    except Exception as error:  # noqa: BLE001
+        print(f"agent-sense hook: skipped ({type(error).__name__})", file=sys.stderr)
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "hook":
-        return hook_stop(sys.stdin.read())
+        try:
+            return hook_stop(sys.stdin.read())
+        except Exception:  # noqa: BLE001  the last line of defence: a hook never fails a session
+            return 0
     root = Path(args.root).resolve() if args.root else find_root(Path.cwd())
     if args.command == "init":
         return init(root, args.hook)
@@ -233,7 +261,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             reports = [run_service(args.command, args, root, config)]
     except RuntimeError as error:
-        print(f"agent-sense: {error}", file=sys.stderr)
+        print(f"agent-sense: {clean(error, 600)}", file=sys.stderr)
         return 2
     return emit(reports, args)
 

@@ -27,6 +27,24 @@ def test_clean_strips_control_and_direction_characters():
     assert cli.clean("a\x1b[31mb\u202ec\nd") == "a[31mbc d"
 
 
+INVISIBLE = [chr(code) for code in (0x1B, 0x7F, 0x9B, 0x202E, 0x2028, 0x2066, 0x200E, 0x200F, 0x061C, 0x200B, 0xFEFF,
+                                    0x00AD, 0xE0001, 0xD800)]
+
+
+def test_clean_drops_everything_invisible_and_keeps_ordinary_text():
+    japanese = chr(0x65E5) + chr(0x672C) + chr(0x8A9E)
+    assert cli.clean("a" + "".join(INVISIBLE) + f"b {japanese} c") == f"ab {japanese} c"   # marks and a lone surrogate too
+    cli.clean("".join(INVISIBLE) + "x").encode("utf-8")                                    # nothing left that cannot be printed
+
+
+def test_json_text_escapes_everything_invisible_and_keeps_the_data():
+    payload = {"findings": [{"message": "m" + "".join(INVISIBLE), "detail": {"lines": ["".join(INVISIBLE) + " tail"]}}]}
+    text = cli.json_text(payload)
+    assert not any(char in text for char in INVISIBLE)
+    assert json.loads(text) == payload
+    text.encode("utf-8")                                                                   # a lone surrogate would raise here
+
+
 def test_format_text_and_exit_codes():
     report = cli.schema.build_report("done", {"findings": [
         {"rule": "tests-stale", "severity": "fail", "message": "files changed", "fix": "run it", "file": "a.py", "line": 3,
@@ -151,3 +169,60 @@ def test_hook_check_that_cannot_run_does_not_switch_the_others_off(repo, capsys,
     captured = capsys.readouterr()
     assert "features skipped (TypeError" in captured.err
     assert json.loads(captured.out)["decision"] == "block" and "tests-not-run" in captured.out   # done still ran
+
+
+SURROGATE_RECORD = {"runs": {"a": {"command": TRUE, "exit": 1, "passed": False, "tail": [chr(0xD800) + " x"]}}}
+
+
+def surrogate_project(repo, hook_checks):
+    (repo / ".agent-sense.toml").write_text(DONE_CONFIG + f"[hook]\nchecks = {json.dumps(hook_checks)}\n")
+    (repo / "features.json").write_text(json.dumps(
+        {"features": [{"id": "a", "behavior": "x", "verify": TRUE, "state": "passing"}]}))
+    record = repo / ".git" / "agent-sense" / "features.json"
+    record.parent.mkdir(parents=True, exist_ok=True)
+    record.write_text(json.dumps(SURROGATE_RECORD))               # json.dumps writes the lone surrogate as an escape
+
+
+@pytest.mark.parametrize("output", ["text", "json"])
+def test_a_lone_surrogate_in_the_record_does_not_crash_the_report(repo, capsys, output):
+    surrogate_project(repo, ["features"])
+    assert cli.main(["features", "--root", str(repo), "--format", output, "--out", str(repo / "out.json")]) == 1
+    printed = capsys.readouterr().out                             # used to be UnicodeEncodeError in emit
+    printed.encode("utf-8")
+    assert "feature-failing" in printed and chr(0xD800) not in printed
+    stored = (repo / "out.json").read_text(encoding="utf-8")
+    assert chr(0xD800) not in stored and json.loads(stored)["findings"][0]["detail"]["lines"] == [chr(0xD800) + " x"]
+
+
+def test_hook_survives_a_record_with_a_lone_surrogate_and_still_blocks(repo, capsys):
+    surrogate_project(repo, ["features", "done"])
+    event = json.dumps({"cwd": str(repo), "stop_hook_active": False})
+    assert cli.hook_stop(event) == 0                              # used to raise from the final print
+    out = capsys.readouterr().out
+    out.encode("utf-8")
+    answer = json.loads(out)
+    assert answer["decision"] == "block" and "feature-failing" in answer["reason"] and "tests-not-run" in answer["reason"]
+
+
+def test_hook_never_raises_while_building_or_printing_its_answer(repo, capsys, monkeypatch):
+    surrogate_project(repo, ["features"])
+
+    def broken(_reports):
+        raise UnicodeEncodeError("utf-8", "x", 0, 1, "surrogates not allowed")
+
+    monkeypatch.setattr(cli, "format_text", broken)
+    event = json.dumps({"cwd": str(repo), "stop_hook_active": False})
+    assert cli.hook_stop(event) == 0
+    captured = capsys.readouterr()
+    assert captured.out == "" and "skipped (UnicodeEncodeError)" in captured.err
+    monkeypatch.setattr(cli, "hook_stop", lambda _text: (_ for _ in ()).throw(ValueError("anything")))
+    monkeypatch.setattr(sys, "stdin", __import__("io").StringIO(event))
+    assert cli.main(["hook", "stop"]) == 0                        # the outer guard
+
+
+def test_bad_features_timeout_in_config_exits_2_on_a_read(repo, capsys):
+    (repo / ".agent-sense.toml").write_text(DONE_CONFIG + '[features]\ntimeout = "abc"\n')
+    (repo / "features.json").write_text('{"features": []}')
+    assert cli.main(["features", "--root", str(repo)]) == 2
+    assert "timeout" in capsys.readouterr().err
+    assert cli.main(["features", "--root", str(repo), "--run", "--timeout", "1e10"]) == 2

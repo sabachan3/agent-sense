@@ -100,8 +100,9 @@ def test_run_moves_states_only_by_the_exit_code(tmp_path):
 
 
 def test_read_only_reports_what_the_record_says(tmp_path):
-    root = project(tmp_path, [feature("a", "active"), feature("b", "passing", BAD)])
+    root = project(tmp_path, [feature("a", "active"), feature("b", "passing", BAD)], git=True)
     check(root, run=True)
+    assert (root / ".git" / "agent-sense" / "features.json").is_file()
     assert rules(check(root)) == [("feature-failing", "warn")]         # b is in progress, its last run failed
     data = json.loads((root / "features.json").read_text(encoding="utf-8"))
     assert rules(check(root, config={"wip": 0})) == [("feature-failing", "warn"), ("wip-limit", "warn")]
@@ -113,7 +114,7 @@ def test_read_only_reports_what_the_record_says(tmp_path):
 
 
 def test_passing_without_a_matching_record_is_unverified(tmp_path):
-    root = project(tmp_path, [feature("a", "passing"), feature("b", "passing")])
+    root = project(tmp_path, [feature("a", "passing"), feature("b", "passing")], git=True)
     result = check(root)
     assert rules(result) == [("passing-unverified", "warn")] * 2
     assert "no verification run is recorded" in result["findings"][0]["message"]
@@ -140,7 +141,7 @@ def test_no_verify_and_wip_limit(tmp_path):
 
 def test_only_runs_the_named_feature_whatever_its_state(tmp_path):
     root = project(tmp_path, [feature("a", "not_started"), feature("b", "blocked", BAD), feature("c", "passing", BAD),
-                              feature("n", "active", None)])
+                              feature("n", "active", None)], git=True)
     result = check(root, run=True, only=["a", "b"])
     assert states(root) == {"a": "passing", "b": "blocked", "c": "passing", "n": "active"}
     assert result["stats"]["ran"] == 2
@@ -154,7 +155,7 @@ def test_rewrite_keeps_order_and_unknown_keys_and_happens_only_on_change(tmp_pat
     text = ('{"version": 1, "owner": "team",\n "features": [\n  {"state": "active", "note": "日本語", "id": "a", '
             '"behavior": "x", "verify": VERIFY},\n  {"id": "b", "behavior": "y", "state": "passing", "verify": VERIFY}]}\n'
             ).replace("VERIFY", json.dumps(OK))
-    root = project(tmp_path, text.replace("active", "passing"))
+    root = project(tmp_path, text.replace("active", "passing"), git=True)
     check(root, run=True)
     assert (root / "features.json").read_text(encoding="utf-8") == text.replace("active", "passing")   # untouched
     (root / "features.json").write_text(text, encoding="utf-8")
@@ -205,7 +206,7 @@ def test_zero_or_negative_timeout_is_rejected_not_ignored(tmp_path, where, value
 
 
 @pytest.mark.parametrize("damage", [{"tail": None}, {"tail": 5}, {"tail": [1]}, {"passed": "yes"}, {"exit": "1"},
-                                    {"command": None}])
+                                    {"tail": ["x", None]}, {"exit": True}])
 def test_a_damaged_record_entry_counts_as_no_record(tmp_path, damage):
     root = project(tmp_path, [feature("a", "passing"), feature("b", "passing")])
     good = {"command": OK, "exit": 0, "passed": True, "at": 1, "seconds": 0.1, "tail": []}
@@ -302,3 +303,126 @@ def test_rewrite_falls_back_to_a_full_dump_when_the_edit_would_not_give_the_data
     repeated = '{"features": [{"state": "blocked", "id": "a", "behavior": "x", "state": "active"}]}'
     wanted = {"features": [{"state": "passing", "id": "a", "behavior": "x"}]}
     assert json.loads(features_lib.with_states(repeated, wanted)) == wanted   # the last duplicate is the one read
+
+
+# ---- regressions from the second independent review
+
+@pytest.mark.parametrize("where", ["argument", "config"])
+@pytest.mark.parametrize("value", [1e10, 9e9, 1e300, 86401])
+def test_a_timeout_beyond_a_day_is_rejected_not_a_traceback(tmp_path, where, value):
+    root = project(tmp_path, [feature("a")])
+    options = {"timeout": value} if where == "argument" else {}
+    config = {"timeout": value} if where == "config" else {}
+    with pytest.raises(RuntimeError, match="at most 86400"):      # used to be OverflowError from the OS timer
+        check(root, config=config, run=True, **options)
+    assert states(root) == {"a": "active"}
+    assert features_lib.timeout_of(features_lib.MAX_TIMEOUT, None) == features_lib.MAX_TIMEOUT
+
+
+def test_a_bad_config_timeout_is_an_error_on_a_plain_read_too(tmp_path):
+    root = project(tmp_path, [feature("a")])
+    for bad in ("abc", 0, -3, float("inf")):
+        with pytest.raises(RuntimeError, match="timeout"):       # a read used to print OK and exit 0
+            check(root, config={"timeout": bad})
+    with pytest.raises(RuntimeError, match="config"):            # both values are checked, not only the one used
+        check(root, config={"timeout": "abc"}, run=True, timeout=5)
+    assert rules(check(root, config={"timeout": 30})) == []
+    assert rules(check(root, timeout=0)) == []                   # --timeout without --run is not used, so not judged
+
+
+def test_a_command_that_cannot_be_started_fails_its_feature_and_keeps_the_others(tmp_path):
+    root = project(tmp_path, [feature("a", "passing"), feature("b", "passing", "echo " + chr(0)), feature("c", "active")])
+    result = check(root, run=True)                               # used to be a ValueError traceback, losing a and c
+    assert states(root) == {"a": "passing", "b": "active", "c": "passing"}
+    failing = [finding for finding in result["findings"] if finding["rule"] == "feature-failing"]
+    assert len(failing) == 1 and failing[0]["detail"]["exit"] == 127
+    assert any("could not start" in line for line in failing[0]["detail"]["lines"])
+    record = features_lib.read_record(root)
+    assert record["a"]["passed"] and record["c"]["passed"] and record["b"]["exit"] == 127
+
+
+def test_nesting_deeper_than_the_walker_can_follow_still_writes_the_state(tmp_path):
+    deep = "[" * 1100 + "]" * 1100
+    text = ('{"features": [{"id": "a", "behavior": "x", "state": "active", "verify": ' + json.dumps(OK) +
+            ', "deep": ' + deep + "}]}")
+    root = project(tmp_path, text)
+    result = check(root, run=True)                               # used to run the command, then exit 2 and write nothing
+    assert rules(result) == [] and states(root) == {"a": "passing"}
+    assert features_lib.read_record(root)["a"]["passed"]
+
+
+def test_a_record_that_cannot_be_written_puts_the_list_back(tmp_path, monkeypatch):
+    root = project(tmp_path, [feature("a", "active")])
+    before = (root / "features.json").read_bytes()
+    features_lib.write_record(root, {"a": {"command": OK, "exit": 1, "passed": False, "at": 1, "seconds": 0.1, "tail": []}})
+
+    def refuse(_root, _runs):
+        raise RuntimeError("cannot write the record of runs to somewhere: read-only")
+
+    monkeypatch.setattr(features_lib, "write_record", refuse)
+    with pytest.raises(RuntimeError, match="put back"):
+        check(root, run=True)
+    monkeypatch.undo()
+    assert (root / "features.json").read_bytes() == before        # used to say passing over a record that says failed
+    assert rules(check(root)) == [("feature-failing", "warn")]   # true: in progress, last recorded run failed
+
+
+def test_a_command_the_platform_cannot_encode_counts_as_could_not_start(tmp_path, monkeypatch):
+    def refuse(*_args, **_kwargs):   # what POSIX does for a lone surrogate in the command; Windows would start it
+        raise UnicodeEncodeError("utf-8", "x", 0, 1, "surrogates not allowed")
+
+    monkeypatch.setattr(features_lib.subprocess, "Popen", refuse)
+    code, output = features_lib.execute(tmp_path, "echo " + chr(0xD800), 5)
+    assert code == 127 and "could not start" in output          # used to be a traceback
+
+
+def test_the_id_message_says_how_an_id_must_start(tmp_path):
+    for bad in ("-a", ".a", "_a"):
+        result = check(project(tmp_path, [feature(bad)]))
+        assert rules(result) == [("features-invalid", "fail")]
+        assert "starts with a letter or digit" in result["findings"][0]["message"]
+    assert rules(check(project(tmp_path, [feature("a.b_c-1", "not_started")]))) == []
+
+
+@pytest.mark.parametrize("name", ["SIGHUP", "SIGTERM"])
+def test_a_hangup_or_termination_of_the_tool_stops_the_verify_command(tmp_path, name):
+    import signal
+
+    if os.name == "nt":   # no such signals there: the documented behaviour is that nothing is installed
+        with features_lib._signals() as guard:
+            assert guard.previous == {}
+        return
+    pid_file = tmp_path / "pid"
+    sleeper = ("import os, time; open('pid.tmp', 'w').write(str(os.getpid())); os.replace('pid.tmp', 'pid'); "
+               "time.sleep(60)")
+    root = project(tmp_path, [feature("slow", "active", f'"{sys.executable}" -c "{sleeper}"')])
+    driver = ("import argparse, sys; sys.path.insert(0, sys.argv[1]); import features_lib; "
+              "features_lib.run(argparse.Namespace(root=sys.argv[2], config={}, run=True))")
+    tool = subprocess.Popen([sys.executable, "-c", driver, str(Path(features_lib.__file__).parent), str(root)],
+                            start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        deadline = time.time() + 15
+        while not pid_file.exists() and time.time() < deadline:
+            time.sleep(0.02)
+        pid = int(pid_file.read_text())
+        os.kill(tool.pid, getattr(signal, name))                 # to the tool only: the command is in another group
+        assert tool.wait(timeout=15) == -getattr(signal, name)   # the tool still ends the way the signal asked
+        deadline = time.time() + 5
+        while _alive(pid) and time.time() < deadline:
+            time.sleep(0.02)
+        assert not _alive(pid)                                   # the command used to keep running
+    finally:
+        tool.kill()
+    assert states(root) == {"slow": "active"}
+
+
+def test_signal_handlers_are_put_back_and_handled_signals_are_left_alone():
+    import signal
+
+    numbers = [getattr(signal, name) for name in ("SIGHUP", "SIGTERM") if os.name != "nt"]
+    before = {number: signal.getsignal(number) for number in numbers}
+    with features_lib._signals() as guard:
+        inside = {number: signal.getsignal(number) for number in before}
+    assert {number: signal.getsignal(number) for number in before} == before
+    assert all(inside[number] is features_lib._raise_signalled for number in guard.previous)
+    assert all(inside[number] is before[number] for number in before if number not in guard.previous)

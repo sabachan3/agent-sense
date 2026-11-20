@@ -75,14 +75,20 @@ not finished is written under In Progress with the next concrete step, not left 
 3. No check calls a model or sends project data anywhere. `page` and `launch` load only the URL
    they are given.
 4. No runtime dependency besides the standard library; Playwright stays an optional extra.
-5. The Stop hook must never trap a session: silent on any internal error, never blocks when
+5. The Stop hook must never trap a session: it exits 0 whatever the config or a record holds, is
+   silent on any internal error (each check, and the building and printing of the answer, is guarded), never blocks when
    `stop_hook_active`, blocks only on `fail`, and only reads (it never runs a test or verify command).
 6. A new service is added in four places: `SERVICES` in `agent_sense/cli.py`, `force-include` in
    `pyproject.toml`, the README table, `docs/results.md`.
-7. Text from a checked project or page is passed through `clean()` before it reaches a terminal.
+7. Text from a checked project or page is passed through `clean()` before it reaches a terminal:
+   every character Python does not call printable is dropped (controls, direction marks, zero-width
+   characters, lone surrogates). JSON output goes through `json_text()`, which keeps them as escapes.
 8. Gate tests use no network and no browser, and wait only where a timeout is the thing under
-   test (under 1 s). Commands in them are built from `sys.executable`, so they mean the same in
-   `sh` and `cmd.exe` (CI runs the gate on Windows).
+   test (0.2 to 0.6 s locally; one test waits 5 s on CI and on Windows, where process start is slow).
+   New tests build their commands from `sys.executable`, so they mean the same in `sh` and
+   `cmd.exe` (CI runs the gate on Windows). Older exceptions: the done tests use `true` as the test command (they pass on the Windows CI
+   runner; why `true` resolves there was not checked), and one features test uses `exit 9` for
+   commands that are never run.
 9. Unicode escapes written through an agent's file tools can arrive as the literal character.
    After writing a `.py` file that contains `\u` escapes, grep for them and restore any that
    were replaced. Invisible and direction-control characters must stay escapes.

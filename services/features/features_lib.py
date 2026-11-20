@@ -19,6 +19,8 @@ import os
 import re
 import signal
 import subprocess
+import sys
+import threading
 import time
 from pathlib import Path
 
@@ -32,8 +34,10 @@ RUN_STATES = ("active", "passing")
 DEFAULT_FILE = "features.json"
 DEFAULT_WIP = 1
 DEFAULT_TIMEOUT = 600
+MAX_TIMEOUT = 86400     # one day; beyond it the number is a mistake, and huge values overflow the OS timer
 RECORD = "agent-sense/features.json"
 OUTPUT_TAIL = 30
+DEEP = 50_000           # recursion allowed while a list is rewritten
 VERSION = 1
 _ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")   # used with fullmatch: `$` would accept a trailing newline
 
@@ -99,8 +103,9 @@ def load(path: Path, shown: str) -> tuple[dict | None, list[dict]]:
            '"verify": "command", "state": "not_started"}]}; states are ' + ", ".join(STATES))
     try:
         data = json.loads(read_text(path))
-    except (OSError, ValueError) as error:
-        return None, [_finding("features-invalid", f"{shown} cannot be read as JSON: {str(error)[:160]}", fix, shown)]
+    except (OSError, ValueError, RecursionError) as error:
+        why = "it is nested too deeply" if isinstance(error, RecursionError) else str(error)[:160]
+        return None, [_finding("features-invalid", f"{shown} cannot be read as JSON: {why}", fix, shown)]
     if not isinstance(data, dict) or not isinstance(data.get("features"), list):
         return None, [_finding("features-invalid", f"{shown} needs an object with a `features` list", fix, shown)]
     problems = []
@@ -114,7 +119,8 @@ def load(path: Path, shown: str) -> tuple[dict | None, list[dict]]:
         identity = feature.get("id")
         label = f"`{identity}`" if isinstance(identity, str) and identity else f"entry {index + 1}"
         if not isinstance(identity, str) or not _ID.fullmatch(identity):
-            problems.append(f"{label} needs an id made of letters, digits, `-`, `_` or `.`")
+            problems.append(f"{label} needs an id that starts with a letter or digit and goes on with letters, "
+                            "digits, `-`, `_` or `.`")
         elif identity in seen:
             problems.append(f"the id `{identity}` is used more than once")
         else:
@@ -155,11 +161,14 @@ def execute(root: Path, command: str, timeout: float) -> tuple[int, str]:
     try:
         process = subprocess.Popen(command, shell=True, cwd=root, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                    stderr=subprocess.STDOUT, **group)
-    except OSError as error:
-        return 127, f"could not start: {error}"
+    except (OSError, ValueError) as error:   # ValueError: a NUL or an unencodable character in the command
+        return 127, f"could not start: {type(error).__name__}: {str(error)[:200]}"
     try:
         output, _ = process.communicate(timeout=timeout)
         return process.returncode, output.decode("utf-8", "replace")
+    except OverflowError as error:   # a limit the OS timer cannot hold; timeout_of refuses these, this is the backstop
+        _kill_tree(process)
+        raise RuntimeError(f"the timeout of {timeout:g}s is too large") from error
     except subprocess.TimeoutExpired:
         _kill_tree(process)
         try:
@@ -172,9 +181,44 @@ def execute(root: Path, command: str, timeout: float) -> tuple[int, str]:
         raise
 
 
+class _Signalled(BaseException):
+    """SIGHUP or SIGTERM arrived while a verify command was running."""
+
+    def __init__(self, number: int):
+        super().__init__(number)
+        self.number = number
+
+
+def _raise_signalled(number, _frame):
+    raise _Signalled(number)
+
+
+class _signals:
+    """While a verify command runs it sits in its own process group, so a hangup or a termination
+    sent to this tool would leave it running. Turn those signals into an exception, which `execute`
+    answers by killing the group, then let the signal end this process as it would have.
+    POSIX and the main thread only; a signal the caller already ignores or handles is left alone."""
+
+    def __enter__(self):
+        self.previous = {}
+        if os.name != "nt" and threading.current_thread() is threading.main_thread():
+            for number in (signal.SIGHUP, signal.SIGTERM):
+                if signal.getsignal(number) is signal.SIG_DFL:
+                    self.previous[number] = signal.signal(number, _raise_signalled)
+        return self
+
+    def __exit__(self, kind, error, _trace):
+        for number, handler in self.previous.items():
+            signal.signal(number, handler)
+        if isinstance(error, _Signalled):
+            os.kill(os.getpid(), error.number)   # default handling is back: end the way the signal asked
+        return False
+
+
 def verify(root: Path, command: str, timeout: float) -> dict:
     started = time.time()
-    code, output = execute(root, command, timeout)
+    with _signals():
+        code, output = execute(root, command, timeout)
     return {"command": command, "exit": code, "passed": code == 0, "at": int(started),
             "seconds": round(time.time() - started, 2), "tail": output.strip().splitlines()[-OUTPUT_TAIL:]}
 
@@ -234,6 +278,15 @@ def with_states(text: str, data: dict) -> str:
     """`text` with only the changed `state` values replaced, so escapes, number spelling and layout
     stay as written. When the edited text does not parse to exactly `data`, the whole list is written
     out again instead: a file that is right matters more than a file that looks untouched."""
+    limit = sys.getrecursionlimit()
+    sys.setrecursionlimit(max(limit, DEEP))   # unknown keys may nest deeper than the default allows; the walk is cheap
+    try:
+        return _with_states(text, data)
+    finally:
+        sys.setrecursionlimit(limit)
+
+
+def _with_states(text: str, data: dict) -> str:
     try:
         spans: dict = {}
         _value_end(text, _skip(text, 0), (), spans)
@@ -244,8 +297,8 @@ def with_states(text: str, data: dict) -> str:
             text = text[:start] + json.dumps(state) + text[end:]
         if json.loads(text) == data:
             return text
-    except (IndexError, KeyError, ValueError, TypeError, AttributeError):
-        pass
+    except (IndexError, KeyError, ValueError, TypeError, AttributeError, RecursionError):
+        pass   # RecursionError: nesting deeper than this walker can follow
     return json.dumps(data, ensure_ascii=False, indent=2) + "\n"
 
 
@@ -275,13 +328,26 @@ def run_features(root: Path, path: Path, shown: str, data: dict, only: list[str]
         if after != before:
             feature["state"], changed = after, True
     # The list first: if it cannot be written, the record must not say more than the list shows.
+    original = text.encode("utf-8")
     if changed:
         try:
             path.write_bytes(with_states(text, data).encode("utf-8"))
-        except OSError as error:
+        except (OSError, ValueError, RecursionError) as error:
             raise RuntimeError(f"cannot write {shown}: {error}; no state was changed and no run was recorded") from error
     if ran:
-        write_record(root, runs)
+        try:
+            write_record(root, runs)
+        except RuntimeError as error:
+            # And the other way round: a list that says passing over a record that still says failed
+            # would be reported as a lie on the next read. Put the list back.
+            if changed:
+                try:
+                    path.write_bytes(original)
+                except OSError as second:
+                    raise RuntimeError(f"{error}; {shown} was already rewritten and could not be put back "
+                                       f"({second}), so the list and the record disagree") from error
+                raise RuntimeError(f"{error}; {shown} was put back as it was, no state was changed") from error
+            raise
     return findings, ran
 
 
@@ -338,16 +404,18 @@ def stats_of(data: dict, ran: int) -> dict:
 
 
 def timeout_of(given, configured) -> float:
-    """Seconds one verify command may take. Unset means the default; zero, negative or not a number is an error,
-    because a limit that is silently ignored lets a hanging command pass for a slow one."""
+    """Seconds one verify command may take. Unset means the default; zero, negative, not a number or more
+    than a day is an error, because a limit that is silently ignored lets a hanging command pass for a
+    slow one. Both values are checked even though only the first one given is used."""
+    chosen = None
     for value, source in ((given, "--timeout"), (configured, "`timeout` in the config")):
         if value is None:
             continue
         number = isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
-        if not number or value <= 0:
-            raise RuntimeError(f"{source} must be a number of seconds above 0, got {value!r}")
-        return float(value)
-    return float(DEFAULT_TIMEOUT)
+        if not number or value <= 0 or value > MAX_TIMEOUT:
+            raise RuntimeError(f"{source} must be a number of seconds above 0 and at most {MAX_TIMEOUT}, got {value!r}")
+        chosen = float(value) if chosen is None else chosen
+    return float(DEFAULT_TIMEOUT) if chosen is None else chosen
 
 
 def add_arguments(parser) -> None:
@@ -370,6 +438,8 @@ def run(args) -> dict:
     running = bool(getattr(args, "run", False))
     if only and not running:
         raise RuntimeError("--only needs --run")
+    # Checked on a plain read too: a config that `--run` would refuse must not look fine until then.
+    timeout = timeout_of(getattr(args, "timeout", None) if running else None, config.get("timeout"))
     if not path.is_file():
         if running:
             raise RuntimeError(f"{shown} not found in {root}; there is nothing to run")
@@ -390,11 +460,15 @@ def run(args) -> dict:
     wip = wip if isinstance(wip, int) and not isinstance(wip, bool) and wip >= 0 else DEFAULT_WIP
     ran = 0
     if running:
-        timeout = timeout_of(getattr(args, "timeout", None), config.get("timeout"))
         try:
             text = read_text(path)
         except (OSError, ValueError) as error:
             raise RuntimeError(f"cannot read {shown}: {error}") from error
+        try:   # before any command runs: can this list be written back at all?
+            with_states(text, data)
+        except (ValueError, RecursionError) as error:
+            raise RuntimeError(f"{shown} cannot be written back ({type(error).__name__}: {str(error)[:120]}); "
+                               "nothing was run") from error
         findings, ran = run_features(root, path, shown, data, only, timeout, text)
         if only:   # the features not run still answer for their own record
             others = {"features": [feature for feature in data["features"] if feature["id"] not in only]}

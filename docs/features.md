@@ -35,8 +35,9 @@ Other keys, at the top level or in a feature, are kept as they are. When a run c
 only that `state` value is replaced in the text of the file: escapes, the way numbers are spelled,
 indentation and line endings stay as written. The edited text is parsed and compared with the
 intended result before it is saved; only if they differ (which no known input causes) is the whole
-list written out again with two-space indentation. Unknown keys may nest thousands of levels deep;
-before any command runs the tool checks that the list can be written back, and refuses to run if not.
+list written out again with two-space indentation. Unknown keys may nest deeply (about 1,500 levels is safe on every supported Python; a list nested
+beyond what the parser can follow is `features-invalid`, not a crash). Before any command runs the
+tool checks that the list can be written back, and refuses to run if not.
 
 ## States
 

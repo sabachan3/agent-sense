@@ -347,8 +347,20 @@ def test_nesting_deeper_than_the_walker_can_follow_still_writes_the_state(tmp_pa
             ', "deep": ' + deep + "}]}")
     root = project(tmp_path, text)
     result = check(root, run=True)                               # used to run the command, then exit 2 and write nothing
-    assert rules(result) == [] and states(root) == {"a": "passing"}
+    assert rules(result) == []
+    with features_lib._deep():                                   # on Python 3.11 json.loads needs the depth too
+        assert states(root) == {"a": "passing"}
     assert features_lib.read_record(root)["a"]["passed"]
+
+
+def test_nesting_beyond_the_fixed_depth_is_an_invalid_list_not_a_crash(tmp_path):
+    deep = "[" * 20000 + "]" * 20000
+    text = '{"features": [{"id": "a", "behavior": "x", "state": "active", "verify": "x", "deep": ' + deep + "}]}"
+    root = project(tmp_path, text)
+    for options in ({}, {"run": True}):
+        result = check(root, **options)
+        assert rules(result) == [("features-invalid", "fail")] and "nested too deeply" in result["findings"][0]["message"]
+    assert (root / "features.json").read_text(encoding="utf-8") == text
 
 
 def test_a_record_that_cannot_be_written_puts_the_list_back(tmp_path, monkeypatch):

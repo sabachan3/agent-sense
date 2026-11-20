@@ -37,7 +37,7 @@ DEFAULT_TIMEOUT = 600
 MAX_TIMEOUT = 86400     # one day; beyond it the number is a mistake, and huge values overflow the OS timer
 RECORD = "agent-sense/features.json"
 OUTPUT_TAIL = 30
-DEEP = 50_000           # recursion allowed while a list is rewritten
+DEEP = 3000             # recursion allowed while a list is parsed or rewritten; a list nested deeper is invalid
 VERSION = 1
 _ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")   # used with fullmatch: `$` would accept a trailing newline
 
@@ -92,6 +92,20 @@ def write_record(root: Path, runs: dict) -> None:
 
 # ---------------------------------------------------------------- reading and validating the list
 
+class _deep:
+    """Unknown keys may nest deeper than the default recursion limit allows (on Python 3.11 the JSON
+    parser itself counts against it). Raise the limit to a fixed, modest depth while a list is
+    parsed or rewritten; beyond that depth the list is reported as invalid, never a crash."""
+
+    def __enter__(self):
+        self.limit = sys.getrecursionlimit()
+        sys.setrecursionlimit(max(self.limit, DEEP))
+
+    def __exit__(self, *_error):
+        sys.setrecursionlimit(self.limit)
+        return False
+
+
 def read_text(path: Path) -> str:
     """The file exactly as written: no newline translation, so a rewrite can leave the rest alone."""
     return path.read_bytes().decode("utf-8")
@@ -102,7 +116,8 @@ def load(path: Path, shown: str) -> tuple[dict | None, list[dict]]:
     fix = ('the file must look like {"version": 1, "features": [{"id": "login", "behavior": "one sentence", '
            '"verify": "command", "state": "not_started"}]}; states are ' + ", ".join(STATES))
     try:
-        data = json.loads(read_text(path))
+        with _deep():
+            data = json.loads(read_text(path))
     except (OSError, ValueError, RecursionError) as error:
         why = "it is nested too deeply" if isinstance(error, RecursionError) else str(error)[:160]
         return None, [_finding("features-invalid", f"{shown} cannot be read as JSON: {why}", fix, shown)]
@@ -278,12 +293,8 @@ def with_states(text: str, data: dict) -> str:
     """`text` with only the changed `state` values replaced, so escapes, number spelling and layout
     stay as written. When the edited text does not parse to exactly `data`, the whole list is written
     out again instead: a file that is right matters more than a file that looks untouched."""
-    limit = sys.getrecursionlimit()
-    sys.setrecursionlimit(max(limit, DEEP))   # unknown keys may nest deeper than the default allows; the walk is cheap
-    try:
+    with _deep():
         return _with_states(text, data)
-    finally:
-        sys.setrecursionlimit(limit)
 
 
 def _with_states(text: str, data: dict) -> str:

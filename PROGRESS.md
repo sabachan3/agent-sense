@@ -8,7 +8,7 @@ Updated 2026-11-20. Read with `features.json` (what exists) and `docs/results.md
   tool, so the command runs this working copy.
 - Eight checks: done, deps, context, boundary, features, page, launch, session, plus the Claude
   Code Stop hook (`agent-sense hook stop`).
-- Gate: 406 tests in about 2.0 s by pytest's clock (see Known Issues). Known-answer evals all at threshold (numbers in
+- Gate: 407 tests in about 2.0 s by pytest's clock (see Known Issues). Known-answer evals all at threshold (numbers in
   `docs/results.md`). CI runs the gate on Linux, macOS and Windows, the evals on Linux and macOS,
   the browser evals on Linux, and installs the built wheel.
 - The Stop hook is enabled in this repository. Other projects opt in with `agent-sense init --hook`.
@@ -35,10 +35,12 @@ Updated 2026-11-20. Read with `features.json` (what exists) and `docs/results.md
   puts the list back; the id message says how an id must start. Command line: `clean()` drops every
   non-printable character and `json_text()` escapes them, so a lone surrogate no longer crashes a
   report; the Stop hook guards the building and printing of its answer. Eval: 6 new scenarios
-  (24/24). Tests: 24 new cases, and all 24 fail on the previous commit's code (8 timeout bound,
+  (24/24). Tests: 25 new cases, and all 25 fail on the code before this review (commit 0fd98f7) (8 timeout bound,
   1 config timeout on a read, 2 cannot start, 1 deep nesting, 1 record put back, 1 id message,
   2 signals, 1 handler restore, 2 clean and json_text, 2 surrogate report, 2 hook, 1 command-line
-  exit code). The damaged-record case that tested nothing new was replaced. No platform skip was
+  exit code). The damaged-record case that tested nothing new was replaced. The 25th (a list nested beyond the fixed depth is invalid, not a crash) came with the fix for
+  Python 3.11, where the first push failed CI: there the JSON parser counts nesting against the
+  recursion limit, so the depth is now raised to a fixed 3,000 while a list is read. No platform skip was
   added: on Windows the signal tests assert that nothing is installed. `git init` is back in the four tests it
   had been removed from, so they exercise the record inside `.git`.
 
@@ -68,7 +70,7 @@ Nothing.
 - The gate is at the edge of its 2 s budget, and over it by wall clock. Measured 2026-11-20 with
   other jobs running on the machine (load average 2.5 to 3.8), five runs: 1.94 to 2.06 s by
   pytest's clock (median 1.96 s), 2.16 to 2.40 s wall clock for `scripts/test.sh`. The commit
-  before, same conditions: 1.89 to 1.97 s and 2.12 to 2.19 s. The second review added 25 test
+  before, same conditions: 1.89 to 1.97 s and 2.12 to 2.19 s. The second review added 26 test
   cases. `--dist worksteal` is now on in `scripts/test.sh`: with the larger features test file it
   took the gate from about 2.55 s to about 2.0 s (it gave nothing before that file grew). Not yet
   tried: a faster repository template in the done tests, running the gate without `uv run`.

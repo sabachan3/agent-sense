@@ -63,7 +63,7 @@ Run on eight local projects (about 2,000 imports, four of them JavaScript with 1
   shared service, cleared by one `allow` line each.
 - context: 0 findings over 40 checked paths. No real stale reference existed in these files.
 - context, recall on real history (`evals/context_history.py`): 18 references that went stale in
-  eight public repositories since 2025-03-01. 0.1.0 reports 12 (67%). With the new rooted level 17
+  eight public repositories since 2025-03-01. The first version of the check (commit `11d2dc8`, before the release) reports 12 (67%). With the new rooted level 17
   of 18 are reported, 12 as warnings and 5 as info; the last one is a path git ignores.
 - context, noise at the head of ten public repositories: 80 warnings and 15 info findings over
   5,724 checked paths, 85 of the 95 in one monorepo. Not all read.
@@ -123,10 +123,10 @@ commit. With this few large sessions the numbers cannot rank which problem is mo
 the wording-based pushback detection missed at least two complaints.
 
 **Pushback heuristic, measured on 2026-11-20.** 149 user messages of the local logs were labelled by
-hand (33 pushback). The word list of 0.1.0 found 11 of them (recall 0.33, precision 0.92). The
+hand (33 pushback). The word list of the first version (commit `11d2dc8`) found 11 of them (recall 0.33, precision 0.92). The
 patterns were rewritten as constructions and score recall 0.91, precision 0.88 on those messages,
 which were read while writing them. On 120 sentences written by an agent that never saw the
-patterns: precision 0.75, recall 0.60 (0.1.0: 0.58 and 0.32). The held-out number is the one to
+patterns: precision 0.75, recall 0.60 (the first word list: 0.58 and 0.32). The held-out number is the one to
 believe. The labels are one person's reading.
 
 ## Not done

@@ -90,13 +90,13 @@ Recall on real history (`evals/context_history.py`, 2026-11-20): the first-paren
 2025-03-01 of eight public repositories that keep `AGENTS.md` or `CLAUDE.md` files was replayed.
 A stale reference is a path that an instruction file names at a commit where the file is gone,
 found by a plain scan of the text and not by the check's own parser. 18 such references exist in
-five of the repositories. Version 0.1.0 reports 12 of them (67%); the 5 it misses all sit in a
+five of the repositories. The first version of the check (commit `11d2dc8`, before the release) reports 12 of them (67%); the 5 it misses all sit in a
 directory that was removed with them, and one path is ignored by git. With the rooted level the
 check reports 17 of 18: 12 as warnings, 5 as info. None of the 18 stood in plain prose.
 
 Noise at the head of ten public repositories (5,724 paths checked in 270 instruction files):
 80 warnings and 15 info findings, 70 and 15 of them in one monorepo whose instruction files name
-paths relative to sub-packages. Comparing names exactly removed 23 warnings that 0.1.0 gave on
+paths relative to sub-packages. Comparing names exactly removed 23 warnings that the first version gave on
 macOS, where a slug such as `PostHog/posthog` was anchored by the directory `posthog/`. The 80
 warnings were not all read, so their precision is not known.
 

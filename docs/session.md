@@ -126,7 +126,7 @@ tool result marked interrupted) and denied tool calls, by kind and tool. Kinds s
   counted, except for test commands, whose output is read.
 - **Pushback detection is a pattern list.** Measured by `evals/session_pushback_eval.py` on 120
   sentences written by an agent that never saw the patterns (60 pushback, 60 not, hard negatives
-  included): precision 0.75, recall 0.60. The word list of version 0.1.0 scores 0.58 and 0.32 on
+  included): precision 0.75, recall 0.60. The word list of the first version (commit `11d2dc8`, before the release) scores 0.58 and 0.32 on
   the same sentences. On 149 hand-labelled messages of the local logs, which were read while the
   patterns were written and so flatter them: precision 0.88, recall 0.91 (0.92 and 0.33 before).
   So about one flag in four is not a complaint and four complaints in ten go unseen. What it

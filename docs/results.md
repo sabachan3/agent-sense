@@ -137,7 +137,7 @@ wheel on Python 3.12 and the sdist on Python 3.11 into environments outside the 
 the same done, Stop hook and features cycle with each installed command: about 6 s (5.9, 5.9 and
 6.5 s in three runs, warm cache). Once by hand: the wheel with the `browser` extra on Python 3.13 ran
 `page` and `launch` on local fixture pages. `scripts/release_check.py` found no hit in 114 files
-and in all 23 commits (the 17 from before this work and the 6 of it), with 13 private words given; its 42 gate tests
+and in the 25 commits up to `d3523db` (17 from before this work), with 13 private words given; its 42 gate tests
 plant 16 shapes that must be flagged and 14 look-alikes that must not. Six planted defects (a
 version that disagrees, an action on a tag, a relative README link, a wrong changelog entry, a
 home path in a doc, a version option without the version) each failed the gate. Not run: the

@@ -23,6 +23,14 @@ def test_every_service_follows_the_contract():
     cli.build_parser()                  # no option clashes with the common ones
 
 
+def test_version_option_prints_the_package_version_and_exits_0(capsys):
+    import agent_sense
+    with pytest.raises(SystemExit) as stop:
+        cli.main(["--version"])
+    assert stop.value.code == 0
+    assert capsys.readouterr().out == f"agent-sense {agent_sense.__version__}\n"
+
+
 def test_clean_strips_control_and_direction_characters():
     assert cli.clean("a\x1b[31mb\u202ec\nd") == "a[31mbc d"
 

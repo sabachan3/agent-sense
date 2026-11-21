@@ -38,6 +38,8 @@ sys.path.insert(0, str(SERVICES_DIR if INSTALLED else PACKAGE.parent))
 
 from contracts import schema  # noqa: E402
 
+from agent_sense import __version__  # noqa: E402
+
 CONFIG_FILE = ".agent-sense.toml"
 ALL_DEFAULT = ("done", "deps", "context", "boundary")
 HOOK_DEFAULT = ("done",)
@@ -107,6 +109,7 @@ def add_common(parser: argparse.ArgumentParser) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="agent-sense", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--version", action="version", version=f"agent-sense {__version__}")
     commands = parser.add_subparsers(dest="command", required=True)
     for name in SERVICES:
         module = load(name)

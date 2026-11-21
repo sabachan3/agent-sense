@@ -1,16 +1,19 @@
 # Progress
 
-Updated 2026-11-20. Read with `features.json` (what exists) and `docs/results.md` (what was measured).
+Updated 2026-11-22. Read with `features.json` (what exists) and `docs/results.md` (what was measured).
 
 ## Current State
 
-- Version 0.1.0, private repository, not on PyPI. Installed on the author's machine as an editable
-  tool, so the command runs this working copy.
+- Version 0.1.0, never released, private repository, not on a package index. Installed on the
+  author's machine as an editable tool, so the command runs this working copy.
+- Prepared for publication on 2026-11-22; nothing was published. What is left is the owner's:
+  `docs/release.md` (four decisions, then the steps). The name `agent-sense` on pypi.org belongs
+  to another project.
 - Eight checks: done, deps, context, boundary, features, page, launch, session, plus the Claude
   Code Stop hook (`agent-sense hook stop`).
-- Gate: 413 tests, about 1.9 s by pytest's clock on a busy machine (budget and measurements under Known Issues). Known-answer evals all at threshold (numbers in
+- Gate: 456 tests, about 2.0 s by pytest's clock on a busy machine (budget and measurements under Known Issues). Known-answer evals all at threshold (numbers in
   `docs/results.md`). CI runs the gate on Linux, macOS and Windows, the evals on Linux and macOS,
-  the browser evals on Linux, and installs the built wheel.
+  the browser evals on Linux, and builds, checks and installs the wheel and the sdist (`scripts/e2e.sh`).
 - The Stop hook is enabled in this repository. Other projects opt in with `agent-sense init --hook`.
 
 ## Completed
@@ -63,6 +66,18 @@ Updated 2026-11-20. Read with `features.json` (what exists) and `docs/results.md
   limit measured identical on four Python versions. Added after that PASS and not reviewed: two
   depth-limit scenarios in `evals/features_eval.py` (29/29) and the decision entry.
 
+- 2026-11-22: preparation for a public repository and a first release, without publishing.
+  Audit of all files and all commits for private text (`scripts/release_check.py tree` and
+  `history`, with a local word list in `runs/private_names.txt`): no hit; the points that need
+  judgment are in `docs/release.md`, decision (b). Package metadata completed; the sdist holds
+  the sources of the wheel, `docs/` and the changelog, no tests. `scripts/e2e.sh` now builds both
+  archives, checks them (twine, allow-list of files, text scan) and drives the wheel on Python
+  3.12 and the sdist on 3.11. `agent-sense --version`. README rewritten for an outside reader,
+  `CHANGELOG.md`, `docs/release.md`, `.github/workflows/release.yml` (trusted publishing; never
+  run), CI actions pinned by commit SHA. Baselines that the docs called "0.1.0" are now named by
+  the first commit, because the release 0.1.0 contains the later fixes. Not reviewed by the
+  evaluator: no rule of a check changed.
+
 ## In Progress
 
 Nothing.
@@ -86,6 +101,9 @@ Nothing.
   SIGKILL stops nothing. Signal handling was tested on macOS only; Windows has no equivalent here.
 - `deps`: lock-file rules were exercised on synthetic lock files only. The sibling inline-block
   rule hides a helper import when a sibling script does not itself declare the package.
+- Release path: `release.yml` has never run, and pinned `ci.yml` runs first on the next push. The
+  private-text scan matches shapes and a word list; a private fact in ordinary words passes it.
+  The package was not installed on Windows.
 - Gate time. Budget (stated in `CLAUDE.md`): median of three runs under 2.5 s by pytest's clock.
   Measured 2026-11-20 with an editor, browsers and other agent sessions running (load average 9 to
   13), eight runs interleaved with the commit before: this commit 1.78 to 2.16 s by pytest's clock
@@ -95,6 +113,8 @@ Nothing.
   clock is still over the 2 s that was first wished for; the cost is in the tests themselves
   (each `done` and `features` test starts git or an interpreter several times), not in `uv`
   (0.04 s) or collection (0.2 s).
+  Measured again on 2026-11-22 with 456 tests, load average 4 to 5, eight runs: 1.95 to 2.22 s by
+  pytest's clock (median 2.04 s). The 42 release-check tests cost under 0.1 s of that.
 
 ## Next Steps
 
@@ -114,5 +134,7 @@ judgment of the owner. [machine]: needs data or hardware that is not in the repo
 4. [machine] Run `page` and `launch` on Windows once: `uv run --no-project --with playwright
    evals/page_eval.py --channel msedge` and the same for `evals/launch_eval.py`.
 5. [owner] Use `features` in real projects for a while and record what it catches and gets wrong.
-6. [owner] Decisions that are not an agent's: making this repository public, a PyPI release,
-   enabling the Stop hook globally instead of per project.
+6. [owner] The four decisions at the top of `docs/release.md` (public or not, the history, the
+   license, the package index and its name), then the steps in that file. An agent runs none of
+   the publishing steps.
+7. [owner] Enabling the Stop hook globally instead of per project.

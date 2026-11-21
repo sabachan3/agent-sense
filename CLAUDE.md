@@ -23,7 +23,8 @@ Local, deterministic checks for work done with coding agents, shipped as one com
 | `evals/` | Known-answer evals, one or more per check; fixtures for the browser evals |
 | `docs/<name>.md` | Rules, evidence and limits of one check. This takes the place of a README per service |
 | `docs/results.md` | Every measured number and how it was produced |
-| `scripts/` | `test.sh` (gate), `setup.sh`, `e2e.sh` |
+| `docs/release.md` | The owner's decisions and steps for going public and for a release. A version changes in `pyproject.toml`, `agent_sense/__init__.py` and `CHANGELOG.md` together |
+| `scripts/` | `test.sh` (gate), `setup.sh`, `e2e.sh`, `release_check.py` (private text, archive contents, versions) |
 | `runs/` | Eval output, ignored by git: it exists only on the machine that ran the eval |
 
 ## Commands
@@ -34,7 +35,7 @@ scripts/test.sh                  # gate: all tests, about 2 s, also the pre-comm
 scripts/test.sh -k test_deps_lib # one check's tests
 uv run --quiet --no-project --python 3.12 evals/deps_eval.py                     # an eval (free, seconds)
 uv run --quiet --no-project --python 3.12 --with playwright evals/page_eval.py   # browser eval, about 90 s
-scripts/e2e.sh                   # build the wheel, install it, drive it on a throwaway repository (3 s)
+scripts/e2e.sh                   # build wheel and sdist, check them, install each, drive it on a throwaway repository (6 s)
 agent-sense done --run           # run the gate and record that it passed on these files
 agent-sense all                  # done, deps, context, boundary by default; here also features (.agent-sense.toml)
 agent-sense features --run       # rewrites features.json states; leaves out the two browser features (manual)
@@ -94,4 +95,6 @@ that is not finished is written under In Progress with the next concrete step, n
     finding is wrong, fix the rule and add the case that shows it.
 11. Reports and docs state what was measured, on what sample. No field claim without a run.
 12. This repository may become public: no private project names, host names, personal paths or
-    email addresses in code, tests, fixtures, docs or commit messages.
+    email addresses in code, tests, fixtures, docs or commit messages (`scripts/release_check.py`).
+13. Publishing is the owner's (`docs/release.md`): an agent changes no visibility, makes no tag,
+    release or upload, and rewrites no pushed history.

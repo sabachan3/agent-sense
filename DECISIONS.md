@@ -3,6 +3,34 @@
 Newest first. Each entry: what was decided, why, and what was rejected. Add an entry when a choice
 would otherwise be re-argued by the next session.
 
+## 2026-11-22: prepared for publication, with every publishing step left to the owner
+
+- Decision: the repository carries everything a release needs (metadata, changelog, release
+  workflow with trusted publishing, the checks in `scripts/release_check.py`, `docs/release.md`),
+  and nothing was published. Visibility, the license confirmation, the name on the package index
+  and the upload are the owner's, in that file.
+- Decision: the history is kept as it is. Why: the scan of all commits found no private text and
+  every commit carries the no-reply address, so a rewrite or a fresh repository would only cost
+  the commit hashes the documents cite. Rejected: a squashed public repository by default.
+- Decision: the distribution name stays `agent-sense` in `pyproject.toml` although pypi.org has
+  another project of that name. Why: the choice between no index, another distribution name and
+  a full rename changes what users type and is not an agent's. The README names no index install
+  command until then, and `release_check.py index` stops an upload under a name that is not ours.
+- Decision: the sdist holds what builds the wheel, `docs/` and the changelog, and no tests. Why:
+  the tests need `conftest.py`, `scripts/`, the evals and their fixtures, among them the list of
+  40 real sites; half of a test suite in an archive runs nowhere. Rejected: shipping the whole
+  repository in the sdist.
+- Decision: README links are absolute URLs. Why: the same file is the page on the package index,
+  where a relative link leads nowhere. Cost: they point at `main`, not at the released version.
+- Decision: workflow actions are pinned to commit SHAs with the version in a comment, and a gate
+  test refuses anything else. Why: a tag can be moved by whoever controls the action's
+  repository, and the release workflow holds the right to upload. `checkout` and `setup-uv` stay
+  on the major versions CI already used (v4.4.0, v6.8.0). Rejected: moving to the newest majors
+  in the same change (v7 and v10 exist), which would mix an upgrade into a pinning.
+- Decision: the version is written in `pyproject.toml` and `agent_sense/__init__.py`, and a check
+  compares them with the changelog. Rejected: a dynamic version read by the build backend (the
+  editable install and the tests would then need the build step to know the version).
+
 ## 2026-11-22: the nesting limit of a feature list is counted by the tool
 
 - Decision: before parsing, `features` counts the nesting of brackets and braces itself and

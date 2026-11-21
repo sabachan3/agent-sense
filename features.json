@@ -59,8 +59,14 @@
     },
     {
       "id": "package",
-      "behavior": "The built wheel installs into a clean environment and the installed command runs a full done cycle and a features run.",
+      "behavior": "The built wheel and sdist pass the archive checks, install into clean environments, and each installed command runs a full done cycle and a features run.",
       "verify": "scripts/e2e.sh",
+      "state": "passing"
+    },
+    {
+      "id": "release-check",
+      "behavior": "Reports private text in files, history and built archives, files an archive must not hold, versions that disagree and workflow actions that are not pinned.",
+      "verify": "scripts/test.sh -k test_release && uv run --quiet --no-project --python 3.12 scripts/release_check.py meta && uv run --quiet --no-project --python 3.12 scripts/release_check.py tree && uv run --quiet --no-project --python 3.12 scripts/release_check.py history",
       "state": "passing"
     }
   ]

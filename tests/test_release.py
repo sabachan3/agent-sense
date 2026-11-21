@@ -104,6 +104,8 @@ def test_archive_allow_lists_take_what_a_build_holds_and_nothing_else():
     assert rc.unexpected_members("wheel", WHEEL_FILES + NEVER_INSIDE) == NEVER_INSIDE
     assert rc.unexpected_members("sdist", SDIST_FILES + NEVER_INSIDE) == NEVER_INSIDE
     assert rc.unexpected_members("wheel", ["services/done/done_lib.py"]) == ["services/done/done_lib.py"]   # sdist layout in a wheel
+    assert rc.unexpected_members("wheel", ["other_name-0.1.0.dist-info/METADATA"]) == []                    # the distribution may be renamed
+    assert rc.unexpected_members("wheel", ["other_name-0.1.0.dist-info/direct_url.json"]) == ["other_name-0.1.0.dist-info/direct_url.json"]
 
 
 def build_pair(directory, extra=None, text="x = 1\n"):

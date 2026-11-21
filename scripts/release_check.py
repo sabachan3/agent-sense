@@ -64,7 +64,7 @@ TOKENS = {
 # has to be allowed here on purpose.
 WHEEL_ALLOWED = re.compile(r"^(?:agent_sense/[a-z_]+\.py"
                            r"|agent_sense/_services/[a-z_]+/(?:[a-z_]+\.py|vendors\.json)"
-                           r"|agent_sense-[0-9][^/]*\.dist-info/(?:METADATA|WHEEL|RECORD|entry_points\.txt|licenses/LICENSE))$")
+                           r"|[A-Za-z0-9_]+-[0-9][^/]*\.dist-info/(?:METADATA|WHEEL|RECORD|entry_points\.txt|licenses/LICENSE))$")
 SDIST_ALLOWED = re.compile(r"^(?:agent_sense/[a-z_]+\.py|contracts/(?:[a-z_]+\.py|README\.md)"
                            r"|services/([a-z_]+)/(?:\1_lib\.py|vendors\.json)|docs/[a-z_]+\.md"
                            r"|README\.md|CHANGELOG\.md|LICENSE|pyproject\.toml|PKG-INFO|\.gitignore)$")

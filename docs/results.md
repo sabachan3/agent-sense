@@ -16,10 +16,10 @@ how much noise to expect there, not how often the problems occur in general.
 | launch | 61 | 10/10 sites in Chromium | `evals/launch_eval.py` |
 | session | 108 | 18/18 synthetic sessions; pushback on 120 held-out sentences: precision 0.75, recall 0.60 | `evals/session_eval.py`, `evals/session_pushback_eval.py` |
 
-The whole gate (413 tests with the command-line and eval-script tests) runs in about 1.9 s by
-pytest's own clock (median of eight runs), measured while other work was running on the machine (see `PROGRESS.md`). On every push CI runs
+The whole gate (456 tests with the command-line, eval-script and release-check tests) runs in about 2.0 s by
+pytest's own clock (median of eight runs on 2026-11-22: 1.95 to 2.22 s), measured while other work was running on the machine (see `PROGRESS.md`). On every push CI runs
 the gate on Linux, macOS and Windows, the known-answer evals on Linux and macOS, the two browser
-evals in Chromium on Linux, and builds the wheel, installs it and checks this repository with it.
+evals in Chromium on Linux, and builds the wheel and the sdist, checks and installs both (`scripts/e2e.sh`) and checks this repository with the installed wheel.
 
 ## done
 
@@ -128,6 +128,20 @@ patterns were rewritten as constructions and score recall 0.91, precision 0.88 o
 which were read while writing them. On 120 sentences written by an agent that never saw the
 patterns: precision 0.75, recall 0.60 (the first word list: 0.58 and 0.32). The held-out number is the one to
 believe. The labels are one person's reading.
+
+## Package and release checks
+
+Added 2026-11-22, before any release. `scripts/e2e.sh` builds the wheel (19 files, 104 kB) and the
+sdist (31 files, 131 kB), runs `twine check --strict` and the archive allow-list on them, installs the
+wheel on Python 3.12 and the sdist on Python 3.11 into environments outside the repository, and runs
+the same done, Stop hook and features cycle with each installed command: about 6 s (5.9, 5.9 and
+6.5 s in three runs, warm cache). Once by hand: the wheel with the `browser` extra on Python 3.13 ran
+`page` and `launch` on local fixture pages. `scripts/release_check.py` found no hit in 114 files
+and in all 23 commits (the 17 from before this work and the 6 of it), with 13 private words given; its 42 gate tests
+plant 16 shapes that must be flagged and 14 look-alikes that must not. Six planted defects (a
+version that disagrees, an action on a tag, a relative README link, a wrong changelog entry, a
+home path in a doc, a version option without the version) each failed the gate. Not run: the
+release workflow itself, any upload, and an install on Windows.
 
 ## Not done
 

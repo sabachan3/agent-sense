@@ -119,10 +119,10 @@ default. To read the list (never run it) in either place, add `"features"` to `[
 
 ## Evidence
 
-`evals/features_eval.py`: 27 scenarios with known answers (hand-edited states, a weakened
+`evals/features_eval.py`: 29 scenarios with known answers (hand-edited states, a weakened
 command, a regression, a fresh clone, backlog items, invalid files and ids, a damaged record, a
 command that hangs, refused timeouts, a list or a record that cannot be written, a file with
-hand-written escapes, features marked manual), 27/27. All scenarios are
+hand-written escapes, features marked manual, an unknown key nested to the limit and one level beyond), 29/29. All scenarios are
 synthetic. The check has been used on four of the author's repositories since 2026-11-20 and
 has no field numbers yet.
 

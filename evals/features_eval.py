@@ -61,7 +61,19 @@ def check(repo: Path, config: dict | None = None, **options) -> dict:
 
 
 # Each scenario: start list, steps, then the expected (rule, severity, id) of the LAST check and the final states.
+def nested(levels: int, state: str = "active") -> str:
+    """A list whose unknown key `deep` brings the nesting to `levels` (object, list and feature are the first 3)."""
+    return ('{"version": 1, "features": [{"id": "add", "behavior": "adds", "state": "' + state + '", "verify": "' + ADD
+            + '", "deep": ' + "[" * (levels - 3) + "]" * (levels - 3) + "}]}")
+
+
 SCENARIOS = [
+    {"name": "unknown key nested exactly to the limit: verified, only the state is edited",
+     "raw": nested(LIB.MAX_NESTING), "steps": [("run", {})], "expect": [],
+     "states": {"add": "passing"}, "text": nested(LIB.MAX_NESTING, "passing")},
+    {"name": "unknown key nested one level beyond the limit: invalid, nothing runs, file untouched",
+     "raw": nested(LIB.MAX_NESTING + 1), "steps": [("run", {})], "expect": [("features-invalid", "fail", None)],
+     "states": {"add": "active"}, "text": nested(LIB.MAX_NESTING + 1)},
     {"name": "honest work: active feature verified, becomes passing",
      "start": [entry("add", "active", ADD)], "steps": [("run", {})],
      "expect": [], "states": {"add": "passing"}},
@@ -211,7 +223,8 @@ def play(scenario: dict) -> tuple[list, dict]:
         found = sorted(((finding["rule"], finding["severity"], finding.get("detail", {}).get("id"))
                         for finding in result["findings"]), key=str)
         written = (repo / "features.json").read_bytes().decode("utf-8")
-        states = {item["id"]: item["state"] for item in json.loads(written)["features"]}
+        with LIB._deep():   # the parser of some Python versions counts nesting against the recursion limit
+            states = {item["id"]: item["state"] for item in json.loads(written)["features"]}
         if "text" in scenario and written != scenario["text"]:
             states["(file text)"] = "differs from the expected text"
         if errors != scenario.get("errors", 1 if ERROR in scenario["expect"] else 0):

@@ -3,6 +3,17 @@
 Newest first. Each entry: what was decided, why, and what was rejected. Add an entry when a choice
 would otherwise be re-argued by the next session.
 
+## 2026-11-22: the nesting limit of a feature list is counted by the tool
+
+- Decision: before parsing, `features` counts the nesting of brackets and braces itself and
+  refuses more than 1,500 levels as `features-invalid`. The raised recursion limit stays, as room
+  for the parser and the rewriter, and is no longer what decides.
+- Why: what a JSON parser does with very deep input differs by Python version. 3.11 refused,
+  3.12 stopped half-way with exit 2, 3.13 and 3.14 read it, ran the commands and wrote the whole
+  file out again (19 MB for 3,100 levels). One limit, the same everywhere, found in review.
+- Rejected: leaving it to the parser (the behaviour above); no limit with an iterative rewriter
+  (a larger change for input no real list has); capping `requires-python` below 3.13.
+
 ## 2026-11-20: costly features are marked manual; the gate budget is what was measured
 
 - Decision: a feature may carry `"manual": true`. A plain `features --run` leaves it out, names

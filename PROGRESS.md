@@ -59,7 +59,9 @@ Updated 2026-11-20. Read with `features.json` (what exists) and `docs/results.md
   tests at the limit and one level above; the gate passes on 3.11, 3.12, 3.13 and 3.14, and CI
   now runs 3.14 too. (2) `README.md` said a plain `features --run` runs every feature's
   verification; it leaves out those marked manual. Also from its notes: the fix text for an
-  unverified manual feature names `--only ID`. These corrections are under review.
+  unverified manual feature names `--only ID`. Second round on `5c17658`: PASS, no class A finding, the depth
+  limit measured identical on four Python versions. Added after that PASS and not reviewed: two
+  depth-limit scenarios in `evals/features_eval.py` (29/29) and the decision entry.
 
 ## In Progress
 

@@ -12,7 +12,7 @@ how much noise to expect there, not how often the problems occur in general.
 | deps | 21 | 15 projects, 19/19 planted findings, 0 unexpected | `evals/deps_eval.py` |
 | context | 19 | 11 projects, 14/14 planted, 0 unexpected; real history: 17 of 18 stale references | `evals/context_eval.py` |
 | boundary | 10 | 11 projects, 10/10 planted, 0 unexpected | `evals/boundary_eval.py` |
-| features | 65 | 27/27 scenarios | `evals/features_eval.py` |
+| features | 65 | 29/29 scenarios | `evals/features_eval.py` |
 | launch | 61 | 10/10 sites in Chromium | `evals/launch_eval.py` |
 | session | 108 | 18/18 synthetic sessions; pushback on 120 held-out sentences: precision 0.75, recall 0.60 | `evals/session_eval.py`, `evals/session_pushback_eval.py` |
 

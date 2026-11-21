@@ -364,6 +364,33 @@ def test_nesting_beyond_the_fixed_depth_is_an_invalid_list_not_a_crash(tmp_path)
     assert (root / "features.json").read_text(encoding="utf-8") == text
 
 
+def test_nesting_is_counted_without_being_fooled_by_strings():
+    assert features_lib.nesting("{}") == 1 and features_lib.nesting("3") == 0
+    assert features_lib.nesting('{"a": [[1], {"b": []}]}') == 4      # object, list, object, list
+    assert features_lib.nesting('{"a": "[[[[", "b": "\\"[[", "c": "\\\\"}') == 1     # brackets and escaped quotes inside strings
+
+
+def test_the_depth_limit_is_exact_and_the_same_on_every_python(tmp_path):
+    def text_with(levels):       # the object, the features list and the feature make 3 levels; `deep` adds the rest
+        deep = "[" * (levels - 3) + "]" * (levels - 3)
+        return '{"features": [{"id": "a", "behavior": "x", "state": "active", "verify": ' + json.dumps(OK) + ', "deep": ' + deep + "}]}"
+
+    at_limit = text_with(features_lib.MAX_NESTING)
+    assert features_lib.nesting(at_limit) == features_lib.MAX_NESTING
+    (tmp_path / "at").mkdir()
+    (tmp_path / "over").mkdir()
+    root = project(tmp_path / "at", at_limit)
+    assert rules(check(root, run=True)) == []
+    assert (root / "features.json").read_text(encoding="utf-8") == at_limit.replace('"state": "active"', '"state": "passing"')   # edited in place
+
+    over = text_with(features_lib.MAX_NESTING + 1)
+    root = project(tmp_path / "over", over)
+    for options in ({}, {"run": True}):
+        result = check(root, **options)
+        assert rules(result) == [("features-invalid", "fail")] and "nested too deeply" in result["findings"][0]["message"]
+    assert (root / "features.json").read_text(encoding="utf-8") == over and features_lib.read_record(root) == {}   # nothing ran, nothing written
+
+
 def test_a_record_that_cannot_be_written_puts_the_list_back(tmp_path, monkeypatch):
     root = project(tmp_path, [feature("a", "active")])
     before = (root / "features.json").read_bytes()
@@ -474,3 +501,9 @@ def test_manual_is_read_like_any_feature_and_must_be_a_boolean(tmp_path):
     bad = project(tmp_path / "bad" if (tmp_path / "bad").mkdir() is None else tmp_path, [feature("a", manual="yes")])
     assert rules(check(bad)) == [("features-invalid", "fail")]
     assert rules(check(project(bad, [feature("a", manual=False)]), run=True)) == []
+
+
+def test_an_unverified_manual_feature_is_told_the_command_that_runs_it(tmp_path):
+    root = project(tmp_path, [{**feature("costly", "passing"), "manual": True}, feature("cheap", "passing")])
+    fixes = {finding["detail"]["id"]: finding["fix"] for finding in check(root)["findings"] if finding["rule"] == "passing-unverified"}
+    assert "--run --only costly" in fixes["costly"] and "--only" not in fixes["cheap"]

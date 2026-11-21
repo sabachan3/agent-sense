@@ -5,7 +5,7 @@ proves it, and a state. An agent may write the first two. The state `passing` is
 written by `--run`, after the command exited 0, so "done" in the list means a command said so.
 
     agent-sense features          read the list and the local record of the last runs
-    agent-sense features --run    run the verify command of every active or passing feature
+    agent-sense features --run    run the verify command of every active or passing feature not marked manual
 
 See docs/features.md.
 """
@@ -37,7 +37,8 @@ DEFAULT_TIMEOUT = 600
 MAX_TIMEOUT = 86400     # one day; beyond it the number is a mistake, and huge values overflow the OS timer
 RECORD = "agent-sense/features.json"
 OUTPUT_TAIL = 30
-DEEP = 3000             # recursion allowed while a list is parsed or rewritten; a list nested deeper is invalid
+MAX_NESTING = 1500      # brackets inside brackets; a list nested deeper is invalid, on every Python version alike
+DEEP = 2 * MAX_NESTING  # recursion allowed while a list is parsed or rewritten, with room above MAX_NESTING
 VERSION = 1
 _ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")   # used with fullmatch: `$` would accept a trailing newline
 
@@ -94,8 +95,8 @@ def write_record(root: Path, runs: dict) -> None:
 
 class _deep:
     """Unknown keys may nest deeper than the default recursion limit allows (on Python 3.11 the JSON
-    parser itself counts against it). Raise the limit to a fixed, modest depth while a list is
-    parsed or rewritten; beyond that depth the list is reported as invalid, never a crash."""
+    parser itself counts against it). Raise the limit while a list is parsed or rewritten. `load`
+    has already refused anything deeper than MAX_NESTING, so this limit is never the deciding one."""
 
     def __enter__(self):
         self.limit = sys.getrecursionlimit()
@@ -104,6 +105,31 @@ class _deep:
     def __exit__(self, *_error):
         sys.setrecursionlimit(self.limit)
         return False
+
+
+def nesting(text: str) -> int:
+    """The deepest nesting of brackets and braces in JSON text, counted without recursion. Counted
+    here and not left to the parser: what a parser does with very deep input differs between
+    Python versions (3.11 refuses, 3.13 and later read it)."""
+    depth = deepest = 0
+    in_string = False
+    index, end = 0, len(text)
+    while index < end:
+        char = text[index]
+        if in_string:
+            if char == "\\":
+                index += 1
+            elif char == '"':
+                in_string = False
+        elif char == '"':
+            in_string = True
+        elif char in "[{":
+            depth += 1
+            deepest = max(deepest, depth)
+        elif char in "]}":
+            depth -= 1
+        index += 1
+    return deepest
 
 
 def read_text(path: Path) -> str:
@@ -116,10 +142,13 @@ def load(path: Path, shown: str) -> tuple[dict | None, list[dict]]:
     fix = ('the file must look like {"version": 1, "features": [{"id": "login", "behavior": "one sentence", '
            '"verify": "command", "state": "not_started"}]}; states are ' + ", ".join(STATES))
     try:
+        text = read_text(path)
+        if nesting(text) > MAX_NESTING:
+            raise RecursionError
         with _deep():
-            data = json.loads(read_text(path))
+            data = json.loads(text)
     except (OSError, ValueError, RecursionError) as error:
-        why = "it is nested too deeply" if isinstance(error, RecursionError) else str(error)[:160]
+        why = f"it is nested too deeply (more than {MAX_NESTING} levels)" if isinstance(error, RecursionError) else str(error)[:160]
         return None, [_finding("features-invalid", f"{shown} cannot be read as JSON: {why}", fix, shown)]
     if not isinstance(data, dict) or not isinstance(data.get("features"), list):
         return None, [_finding("features-invalid", f"{shown} needs an object with a `features` list", fix, shown)]
@@ -393,7 +422,9 @@ def record_findings(root: Path, shown: str, data: dict) -> list[dict]:
             why = "the verify command changed since its last run" if last else "no verification run is recorded here"
             findings.append(_finding(
                 "passing-unverified", f"`{identity}` is marked passing but {why}",
-                "run `agent-sense features --run`; the record is local, so a fresh clone starts without one", shown,
+                (f"run `agent-sense features --run --only {identity}` (it is marked manual, so a plain --run leaves it out)"
+                 if feature.get("manual") is True else "run `agent-sense features --run`")
+                + "; the record is local, so a fresh clone starts without one", shown,
                 detail={"id": identity}))
     return findings
 
@@ -438,7 +469,7 @@ def timeout_of(given, configured) -> float:
 
 def add_arguments(parser) -> None:
     parser.add_argument("--run", action="store_true",
-                        help="run the verify command of every active or passing feature and update the states")
+                        help="run the verify command of every active or passing feature not marked manual and update the states")
     parser.add_argument("--only", action="append", metavar="ID",
                         help="with --run: run just this feature, whatever its state (repeatable)")
     parser.add_argument("--include-manual", action="store_true",

@@ -8,7 +8,7 @@ Updated 2026-11-20. Read with `features.json` (what exists) and `docs/results.md
   tool, so the command runs this working copy.
 - Eight checks: done, deps, context, boundary, features, page, launch, session, plus the Claude
   Code Stop hook (`agent-sense hook stop`).
-- Gate: 410 tests, about 1.9 s by pytest's clock on a busy machine (budget and measurements under Known Issues). Known-answer evals all at threshold (numbers in
+- Gate: 413 tests, about 1.9 s by pytest's clock on a busy machine (budget and measurements under Known Issues). Known-answer evals all at threshold (numbers in
   `docs/results.md`). CI runs the gate on Linux, macOS and Windows, the evals on Linux and macOS,
   the browser evals on Linux, and installs the built wheel.
 - The Stop hook is enabled in this repository. Other projects opt in with `agent-sense init --hook`.
@@ -40,7 +40,7 @@ Updated 2026-11-20. Read with `features.json` (what exists) and `docs/results.md
   2 signals, 1 handler restore, 2 clean and json_text, 2 surrogate report, 2 hook, 1 command-line
   exit code). The damaged-record case that tested nothing new was replaced. The 25th (a list nested beyond the fixed depth is invalid, not a crash) came with the fix for
   Python 3.11, where the first push failed CI: there the JSON parser counts nesting against the
-  recursion limit, so the depth is now raised to a fixed 3,000 while a list is read. No platform skip was
+  recursion limit, so the depth was raised to a fixed 3,000 while a list is read (replaced on 2026-11-22 by an explicit count, see below). No platform skip was
   added: on Windows the signal tests assert that nothing is installed. `git init` is back in the four tests it
   had been removed from, so they exercise the record inside `.git`.
 
@@ -49,6 +49,17 @@ Updated 2026-11-20. Read with `features.json` (what exists) and `docs/results.md
   The evaluator definition classes findings A, B, C and fails only on A. Gate: six workers and
   `-S` for test commands. `CLAUDE.md` and this file corrected after a cold-start reading
   (budget, prerequisites, push policy, startable next steps).
+
+- 2026-11-22: independent review of 3d56c6c..5d41df3 returned FAIL with two class A findings.
+  (1) A list nested beyond the fixed depth was not `features-invalid` on every Python: 3.12
+  stopped with exit 2, and 3.13 and 3.14 ran the commands and wrote the whole file out again
+  (19 MB for 3,100 levels), because their JSON parser no longer counts against the recursion
+  limit; one test of that range failed on 3.14, the interpreter the installed command uses here.
+  Fixed: the tool counts nesting itself (limit 1,500, the same everywhere) before parsing, with
+  tests at the limit and one level above; the gate passes on 3.11, 3.12, 3.13 and 3.14, and CI
+  now runs 3.14 too. (2) `README.md` said a plain `features --run` runs every feature's
+  verification; it leaves out those marked manual. Also from its notes: the fix text for an
+  unverified manual feature names `--only ID`. These corrections are under review.
 
 ## In Progress
 

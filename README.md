@@ -67,7 +67,7 @@ Each has its own page with the rules, how each is decided, the evidence and the 
 - [boundary](docs/boundary.md): `cross-service-import`, `cross-service-syspath`, `cross-service-path`
   for a `services/<name>/` layout.
 - [features](docs/features.md): `features-invalid`, `feature-failing` fail; `passing-unverified`,
-  `no-verify`, `wip-limit` warn. `features.json` lists each feature with the command that proves
+  `no-verify`, `wip-limit` warn; `manual-not-run` info. `features.json` lists each feature with the command that proves
   it; only `agent-sense features --run` writes the state `passing`.
 - [launch](docs/launch.md): `external-undisclosed`, `policy-missing`, `terms-missing`,
   `contact-missing`, `tokushoho-missing`, `tokushoho-incomplete`, `test-key`, `localhost-reference`.
@@ -115,7 +115,7 @@ uv run --no-project --python 3.12 evals/session_pushback_eval.py
 uv run --no-project --python 3.12 --with playwright evals/page_eval.py
 scripts/setup.sh                                  # once after cloning: hooks, the command on PATH, Chromium
 scripts/e2e.sh                                    # build the wheel, install it, run it on a throwaway repository
-agent-sense features --run                        # every feature's own verification
+agent-sense features --run                        # each feature's own verification, except those marked manual (--include-manual for all)
 ```
 
 For agents working here: [CLAUDE.md](CLAUDE.md), [PROGRESS.md](PROGRESS.md), [DECISIONS.md](DECISIONS.md).

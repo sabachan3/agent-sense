@@ -1,5 +1,10 @@
 name: ci
 
+# Every action is pinned to a full commit SHA with the version it stands for in a comment
+# (tests/test_release.py refuses anything else). To update one:
+#   gh api repos/OWNER/REPO/git/ref/tags/vX.Y.Z --jq '.object.type + " " + .object.sha'
+# and, when the type is "tag", gh api repos/OWNER/REPO/git/tags/SHA --jq .object.sha for the commit.
+
 on:
   push:
     branches: [main]
@@ -28,8 +33,8 @@ jobs:
           - { os: ubuntu-latest, python: "3.13" }
           - { os: ubuntu-latest, python: "3.14" }
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # v4.4.0
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e   # v6.8.0
       - name: gate tests
         shell: bash
         env:
@@ -45,8 +50,8 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # v4.4.0
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e   # v6.8.0
       - name: git identity for the throwaway repositories
         run: |
           git config --global user.name ci
@@ -65,8 +70,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # v4.4.0
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e   # v6.8.0
       - name: install Chromium
         run: uv run --quiet --no-project --python 3.12 --with playwright playwright install --with-deps chromium-headless-shell
       - name: page
@@ -75,18 +80,22 @@ jobs:
         run: uv run --quiet --no-project --python 3.12 --with playwright evals/launch_eval.py
 
   package:
-    name: build, install, run the installed command
+    name: build, check and install the wheel and the sdist, run the installed command
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-      - name: build wheel and sdist
-        run: uv build
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # v4.4.0
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e   # v6.8.0
+      - name: versions agree, changelog entry, pinned actions; no private text in tracked files
+        run: |
+          uv run --quiet --no-project --python 3.12 scripts/release_check.py meta
+          uv run --quiet --no-project --python 3.12 scripts/release_check.py tree
+      - name: build both archives, check them, install each and drive the installed command
+        run: scripts/e2e.sh --keep dist
       - name: install the wheel and check this repository with it
         run: |
           uv tool install --python 3.12 dist/*.whl
-          agent-sense --help
+          agent-sense --version
           agent-sense deps
           agent-sense context
           agent-sense boundary

@@ -80,16 +80,27 @@ def template(tmp_path_factory):
     run("git", "init", "-q", "-b", "main")
     run("git", "config", "user.email", "t@example.invalid")
     run("git", "config", "user.name", "t")
+    # A commit can start git's maintenance in the background; its lock file then comes and goes
+    # under .git/objects while `repo` copies the tree (seen once on a Linux runner, 2026-11-22).
+    run("git", "config", "maintenance.auto", "false")
+    run("git", "config", "gc.auto", "0")
     (root / "app.py").write_text("x = 1\n")
     run("git", "add", "-A")
     run("git", "commit", "-q", "-m", "init")
     return root
 
 
+def test_template_repository_starts_no_background_maintenance(template):
+    """The copy in `repo` must not race a detached `git maintenance`: both switches are off and nothing holds a lock."""
+    read = lambda key: subprocess.run(["git", "config", "--local", "--get", key], cwd=template, capture_output=True, text=True).stdout.strip()  # noqa: E731
+    assert read("maintenance.auto") == "false" and read("gc.auto") == "0"
+    assert not list((template / ".git").rglob("*.lock"))
+
+
 @pytest.fixture
 def repo(template, tmp_path):
     import shutil
-    shutil.copytree(template, tmp_path / "repo")
+    shutil.copytree(template, tmp_path / "repo", ignore=shutil.ignore_patterns("*.lock"))
     return tmp_path / "repo"
 
 

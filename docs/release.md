@@ -216,10 +216,14 @@ Each step names who acts. "Check" steps change nothing.
 
 ## What was not verified
 
-- `release.yml` has never run: the upload steps, the environments and the trusted publisher
-  exist only as described here. `ci.yml` with pinned actions has not run on GitHub yet either;
-  it runs on the next push.
-- `actions/upload-artifact` v7.0.2 and `actions/download-artifact` v8.0.2 are the latest releases
-  of each and are assumed to work together; the rehearsal in step 6 shows it.
-- The GitHub side of the repository (issues, pull requests, run logs) was not read for this audit.
+- `release.yml` has run only with `target=none` (2026-11-22, run 45019437549 at `97c7690`: gate,
+  checks and build green, both uploads skipped). The upload steps, the environments and the
+  trusted publisher exist only as described here. `ci.yml` with pinned actions is green.
+- `actions/upload-artifact` v7.0.2 uploaded the two archives in that run; `actions/download-artifact`
+  v8.0.2 runs only in the upload jobs and is assumed to work with it; the rehearsal in step 6 shows it.
+- The GitHub side of the repository was read on 2026-11-22: no issue, no pull request, no
+  release, one branch (`main`), no secret, variable or environment. The logs of the 16 Actions
+  runs that existed then were searched for the private word list, email addresses, home
+  directories and token shapes: no hit (the only address is the tests' `ci@example.invalid`,
+  the only home directory the runner's). Runs made after that were not searched.
 - Whether the other `agent-sense` on pypi.org installs a command or module of the same name.

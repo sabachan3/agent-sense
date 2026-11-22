@@ -101,7 +101,10 @@ Nothing.
   SIGKILL stops nothing. Signal handling was tested on macOS only; Windows has no equivalent here.
 - `deps`: lock-file rules were exercised on synthetic lock files only. The sibling inline-block
   rule hides a helper import when a sibling script does not itself declare the package.
-- Release path: `release.yml` has never run, and pinned `ci.yml` runs first on the next push. The
+- Release path: `release.yml` ran twice on 2026-11-22 with `target=none`. The first run failed in
+  the gate (a test copied a git repository while git's background maintenance held a lock file;
+  fixed in `97c7690`), the second passed at `97c7690` (run 45019437549), both upload jobs
+  skipped. The upload steps and the environments have not run. Pinned `ci.yml` is green. The
   private-text scan matches shapes and a word list; a private fact in ordinary words passes it.
   The package was not installed on Windows.
 - Gate time. Budget (stated in `CLAUDE.md`): median of three runs under 2.5 s by pytest's clock.

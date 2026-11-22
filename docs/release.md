@@ -1,10 +1,24 @@
 # Release: decisions, then steps
 
-State on 2026-11-22: the repository is private, version 0.1.0 has never been released, nothing is
-on a package index. Everything that could be prepared without publishing is in the repository.
-What is left is four decisions of the owner and the steps below, which only the owner runs.
-An agent does not run any command in this file that publishes, tags, changes visibility or
-rewrites history.
+State on 2026-11-22: the repository is public (decision a and steps 1 to 3 below are done, see
+"Done on 2026-11-22"), version 0.1.0 has never been released, nothing is on a package index, no
+tag exists. What is left is decision (d) and steps 4 to 8, which only the owner runs. An agent
+does not run any command in this file that uploads to an index, tags or rewrites history.
+
+## Done on 2026-11-22
+
+- (a) Public: decided by the owner, with the history kept and `evals/launch_jp_sites.txt` and
+  the two single-site sentences left as they are. The visibility was changed with the command
+  of step 3 at commit `67045ee`, on the owner's instruction in the session.
+- Step 1 passed at that commit. Step 2 was read first: no issue, pull request or release, one
+  branch, no secret, variable or environment; the logs of all 20 Actions runs were searched (see
+  "What was not verified" for how) with no hit, and were kept.
+- After the change, from an empty directory with no git credentials:
+  `uvx --from "agent-sense @ git+https://github.com/sabachan3/agent-sense" agent-sense --version`
+  printed `agent-sense 0.1.0`.
+- (c) MIT stands as it was; it was not discussed again.
+
+The sections below are kept as written before the change, as the record of what was weighed.
 
 ## Decisions
 
@@ -222,8 +236,8 @@ Each step names who acts. "Check" steps change nothing.
 - `actions/upload-artifact` v7.0.2 uploaded the two archives in that run; `actions/download-artifact`
   v8.0.2 runs only in the upload jobs and is assumed to work with it; the rehearsal in step 6 shows it.
 - The GitHub side of the repository was read on 2026-11-22: no issue, no pull request, no
-  release, one branch (`main`), no secret, variable or environment. The logs of the 16 Actions
-  runs that existed then were searched for the private word list, email addresses, home
+  release, one branch (`main`), no secret, variable or environment. The logs of the 20 Actions
+  runs that existed before the visibility change were searched for the private word list, email addresses, home
   directories and token shapes: no hit (the only address is the tests' `ci@example.invalid`,
-  the only home directory the runner's). Runs made after that were not searched.
+  the only home directory the runner's).
 - Whether the other `agent-sense` on pypi.org installs a command or module of the same name.

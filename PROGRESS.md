@@ -4,14 +4,16 @@ Updated 2026-11-22. Read with `features.json` (what exists) and `docs/results.md
 
 ## Current State
 
-- Version 0.1.0, never released, private repository, not on a package index. Installed on the
-  author's machine as an editable tool, so the command runs this working copy.
-- Prepared for publication on 2026-11-22; nothing was published. What is left is the owner's:
-  `docs/release.md` (four decisions, then the steps). The name `agent-sense` on pypi.org belongs
-  to another project.
+- Version 0.1.0, never released, not on a package index. The repository is public since
+  2026-11-22 (the owner's decision, with the history and `evals/launch_jp_sites.txt` as they
+  are); the install-from-GitHub line of the README was run without credentials that day and
+  printed `agent-sense 0.1.0`. Installed on the author's machine as an editable tool, so the
+  command runs this working copy.
+- Still the owner's: the package index (`docs/release.md`, decision d and steps 4 to 8). The
+  name `agent-sense` on pypi.org belongs to another project. No tag and no GitHub release exist.
 - Eight checks: done, deps, context, boundary, features, page, launch, session, plus the Claude
   Code Stop hook (`agent-sense hook stop`).
-- Gate: 456 tests, about 2.0 s by pytest's clock on a busy machine (budget and measurements under Known Issues). Known-answer evals all at threshold (numbers in
+- Gate: 457 tests, about 2.0 s by pytest's clock on a busy machine (budget and measurements under Known Issues). Known-answer evals all at threshold (numbers in
   `docs/results.md`). CI runs the gate on Linux, macOS and Windows, the evals on Linux and macOS,
   the browser evals on Linux, and builds, checks and installs the wheel and the sdist (`scripts/e2e.sh`).
 - The Stop hook is enabled in this repository. Other projects opt in with `agent-sense init --hook`.

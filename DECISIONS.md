@@ -3,6 +3,16 @@
 Newest first. Each entry: what was decided, why, and what was rejected. Add an entry when a choice
 would otherwise be re-argued by the next session.
 
+## 2026-11-22: the repository is public, with its history
+
+- Decision (owner): public as it is. The history is kept, and the list of 40 public home pages
+  the launch eval reads stays, with the two sentences about single unnamed sites.
+- Why: the scans of all files, all commits and all Actions logs found nothing private; the list
+  is what makes the eval's numbers reproducible and no finding is attributed to a site.
+- Rejected: removing the two sentences first; a fresh repository with one commit (the commit
+  hashes the documents cite would stop resolving); staying private.
+- Not decided: the package index and its name (`docs/release.md`, decision d).
+
 ## 2026-11-22: prepared for publication, with every publishing step left to the owner
 
 - Decision: the repository carries everything a release needs (metadata, changelog, release
